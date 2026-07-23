@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Stella Heights — Rental Tracker</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
+:root {
+  --sand:#F7F3EE; --warm:#EDE6DA; --ocean:#2A6B7C; --ocean-lt:#3E8FA3;
+  --coral:#D4614A; --ink:#1C1C1C; --muted:#7A7267; --border:#D9D2C5;
+  --white:#FFFFFF; --green:#2E7D55; --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:var(--sand);color:var(--ink);min-height:100vh;}
+
+
+
+/* TOAST */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--white);padding:10px 22px;border-radius:30px;font-size:13px;font-weight:500;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;}
+
+/* APP */
+#app{display:block;}
+header{background:var(--ocean);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.15);}
+.header-left{display:flex;align-items:center;gap:12px;}
+.header-left h1{font-family:'DM Serif Display',serif;font-size:20px;color:var(--white);}
+.header-left span{font-size:12px;color:rgba(255,255,255,.5);font-style:italic;margin-left:2px;}
+.sync-btn{background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:7px 14px;color:var(--white);font-size:12px;font-weight:500;cursor:pointer;transition:background .2s;}
+.sync-btn:hover{background:rgba(255,255,255,.25);}
+.sync-btn.syncing{opacity:.6;pointer-events:none;}
+nav{display:flex;gap:4px;}
+nav button{padding:7px 18px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:rgba(255,255,255,.7);transition:all .2s;}
+nav button:hover{background:rgba(255,255,255,.1);color:var(--white);}
+nav button.active{background:rgba(255,255,255,.18);color:var(--white);}
+main{padding:28px;max-width:1200px;margin:0 auto;}
+
+/* VIEWS */
+.view{display:none;} .view.active{display:block;}
+
+/* CARDS */
+.cards-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:16px;margin-bottom:28px;}
+.card{background:var(--white);border-radius:var(--radius);padding:20px 22px;border:1px solid var(--border);}
+.card .label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px;}
+.card .value{font-size:24px;font-weight:600;color:var(--ink);}
+.card .sub{font-size:12px;color:var(--muted);margin-top:4px;}
+
+/* SETTLEMENT */
+.settlement-banner{background:var(--white);border:2px solid var(--ocean);border-radius:var(--radius);padding:20px 24px;margin-bottom:20px;display:flex;align-items:center;gap:16px;}
+.settlement-banner .icon{font-size:28px;}
+.settlement-banner .text{flex:1;}
+.settlement-banner .text strong{font-size:15px;color:var(--ocean);}
+.settlement-banner .text p{font-size:13px;color:var(--muted);margin-top:3px;}
+.settlement-banner .amount{font-size:22px;font-weight:700;color:var(--coral);}
+
+/* CALENDAR */
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.cal-header h2{font-family:'DM Serif Display',serif;font-size:22px;}
+.cal-nav{display:flex;gap:8px;align-items:center;}
+.cal-nav button{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:14px;font-weight:500;color:var(--ink);transition:all .15s;}
+.cal-nav button:hover{border-color:var(--ocean);color:var(--ocean);}
+.cal-nav .today-btn{background:var(--ocean);color:var(--white);border-color:var(--ocean);font-size:12px;}
+.cal-nav .today-btn:hover{background:var(--ocean-lt);}
+.cal-grid{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.cal-days-header{display:grid;grid-template-columns:repeat(7,1fr);background:var(--warm);border-bottom:1px solid var(--border);}
+.cal-days-header div{text-align:center;padding:10px 0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);}
+.cal-body{display:grid;grid-template-columns:repeat(7,1fr);}
+.cal-cell{min-height:90px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:6px;position:relative;}
+.cal-cell:nth-child(7n){border-right:none;}
+.cal-cell.other-month{background:var(--sand);}
+.cal-cell.today{background:#EEF6F9;}
+.cal-cell .day-num{font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px;}
+.cal-cell.today .day-num{background:var(--ocean);color:var(--white);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.booking-chip{font-size:10px;font-weight:600;border-radius:4px;padding:2px 6px;margin-bottom:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .15s;color:var(--white);}
+.booking-chip:hover{opacity:.82;}
+.add-day-btn{position:absolute;bottom:4px;right:4px;width:18px;height:18px;border-radius:50%;border:1.5px dashed var(--border);background:transparent;cursor:pointer;font-size:13px;color:var(--border);display:flex;align-items:center;justify-content:center;line-height:1;transition:all .15s;}
+.add-day-btn:hover{border-color:var(--ocean);color:var(--ocean);}
+
+/* SECTION */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.section-header h2{font-family:'DM Serif Display',serif;font-size:22px;}
+.btn-primary{background:var(--ocean);color:var(--white);border:none;border-radius:var(--radius);padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:background .2s;}
+.btn-primary:hover{background:var(--ocean-lt);}
+
+/* ROWS */
+.booking-row{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:10px;display:flex;align-items:center;gap:16px;cursor:pointer;transition:border-color .15s;}
+.booking-row:hover{border-color:var(--ocean-lt);}
+.booking-color-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.booking-info{flex:1;}
+.booking-info .name{font-weight:600;font-size:15px;}
+.booking-info .dates{font-size:12px;color:var(--muted);margin-top:2px;}
+.booking-price{font-weight:600;color:var(--green);font-size:15px;}
+.booking-actions{display:flex;gap:8px;}
+.btn-icon{background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px;transition:all .15s;}
+.btn-icon:hover{border-color:var(--coral);color:var(--coral);}
+
+.expense-row{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;margin-bottom:10px;display:flex;align-items:center;gap:14px;}
+.expense-category{background:var(--warm);border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
+.expense-payer{border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;white-space:nowrap;}
+.expense-payer.et{background:#E8F4F8;color:var(--ocean);}
+.expense-payer.nat{background:#FDE8E8;color:var(--coral);}
+.expense-info{flex:1;}
+.expense-info .desc{font-size:14px;font-weight:500;}
+.expense-info .meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.expense-amount{font-weight:600;color:var(--coral);font-size:15px;}
+
+/* PROFIT */
+.profit-block{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:28px;margin-bottom:20px;}
+.profit-block h3{font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:20px;color:var(--ocean);}
+.profit-split{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.split-card{background:var(--sand);border-radius:var(--radius);padding:20px;text-align:center;}
+.split-card .person{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;}
+.split-card .amount{font-size:30px;font-weight:700;color:var(--green);}
+.split-card .note{font-size:12px;color:var(--muted);margin-top:4px;}
+.breakdown-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;}
+.breakdown-row:last-child{border-bottom:none;font-weight:600;font-size:15px;}
+.breakdown-row .neg{color:var(--coral);}
+.breakdown-row .pos{color:var(--green);}
+.breakdown-section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:14px 0 4px;border-bottom:1px solid var(--border);}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--white);border-radius:14px;padding:32px;width:480px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.25);}
+.modal h2{font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:22px;color:var(--ink);}
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:'Inter',sans-serif;outline:none;transition:border .2s;background:var(--white);}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--ocean);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px;}
+.btn-secondary{background:var(--warm);color:var(--ink);border:none;border-radius:var(--radius);padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:background .2s;}
+.btn-secondary:hover{background:var(--border);}
+
+/* PAYER TOGGLE */
+.payer-toggle{display:flex;border:1.5px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.payer-toggle button{flex:1;padding:9px;border:none;background:var(--white);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;color:var(--muted);}
+.payer-toggle button.active-et{background:var(--ocean);color:var(--white);}
+.payer-toggle button.active-nat{background:var(--coral);color:var(--white);}
+
+/* DETAIL */
+.detail-header{display:flex;align-items:center;gap:12px;margin-bottom:20px;}
+.detail-color{width:16px;height:16px;border-radius:50%;flex-shrink:0;}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+.detail-field .dl{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;}
+.detail-field .dv{font-size:14px;font-weight:500;}
+.detail-notes{background:var(--sand);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--muted);font-style:italic;}
+
+/* EMPTY */
+.empty{text-align:center;padding:56px 20px;color:var(--muted);}
+.empty .icon{font-size:40px;margin-bottom:12px;}
+.empty p{font-size:14px;}
+
+@media(max-width:640px){
+  header{padding:0 16px;flex-wrap:wrap;height:auto;padding:10px 16px;gap:8px;}
+  .header-left span{display:none;}
+  main{padding:16px;}
+  nav button{padding:7px 10px;font-size:12px;}
+  .cal-cell{min-height:60px;}
+  .profit-split{grid-template-columns:1fr;}
+  .form-row{grid-template-columns:1fr;}
+  .detail-grid{grid-template-columns:1fr;}
+  .cards-row{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+
+
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div class="header-left">
+      <span style="font-size:22px">🏖️</span>
+      <h1>Stella Heights <span>Rental Tracker</span></h1>
+    </div>
+    <button class="sync-btn" id="sync-btn" onclick="syncNow()">⟳ Sync</button>
+    <nav>
+      <button class="active" onclick="showView('calendar',this)">📅 Calendar</button>
+      <button onclick="showView('bookings',this)">🛏 Bookings</button>
+      <button onclick="showView('expenses',this)">💸 Expenses</button>
+      <button onclick="showView('profit',this)">📊 Profit</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- SUMMARY CARDS -->
+    <div class="cards-row">
+      <div class="card"><div class="label">Total Revenue</div><div class="value" id="card-revenue" style="color:var(--ocean)">EGP 0</div><div class="sub" id="card-bookings-count">0 bookings</div></div>
+      <div class="card"><div class="label">Total Expenses</div><div class="value" id="card-expenses" style="color:var(--coral)">EGP 0</div><div class="sub" id="card-exp-count">0 items</div></div>
+      <div class="card"><div class="label">Net Profit</div><div class="value" id="card-profit" style="color:var(--green)">EGP 0</div><div class="sub">Revenue − expenses</div></div>
+      <div class="card"><div class="label">ET Takes Home</div><div class="value" id="card-et" style="color:var(--green)">EGP 0</div><div class="sub">After settlements</div></div>
+      <div class="card"><div class="label">Nathalie Takes Home</div><div class="value" id="card-nat" style="color:var(--green)">EGP 0</div><div class="sub">After settlements</div></div>
+    </div>
+
+    <!-- CALENDAR VIEW -->
+    <div class="view active" id="view-calendar">
+      <div class="cal-header">
+        <h2 id="cal-month-label">June 2026</h2>
+        <div class="cal-nav">
+          <button onclick="changeMonth(-1)">‹ Prev</button>
+          <button class="today-btn" onclick="goToday()">Today</button>
+          <button onclick="changeMonth(1)">Next ›</button>
+          <button class="btn-primary" style="font-size:12px;padding:7px 14px" onclick="openBookingModal()">+ New Booking</button>
+        </div>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-days-header">
+          <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+        </div>
+        <div class="cal-body" id="cal-body"></div>
+      </div>
+    </div>
+
+    <!-- BOOKINGS VIEW -->
+    <div class="view" id="view-bookings">
+      <div class="section-header">
+        <h2>All Bookings</h2>
+        <button class="btn-primary" onclick="openBookingModal()">+ New Booking</button>
+      </div>
+      <div id="bookings-list"></div>
+    </div>
+
+    <!-- EXPENSES VIEW -->
+    <div class="view" id="view-expenses">
+      <div class="section-header">
+        <h2>Expenses</h2>
+        <button class="btn-primary" onclick="openExpenseModal()">+ New Expense</button>
+      </div>
+      <div id="expenses-list"></div>
+    </div>
+
+    <!-- PROFIT VIEW -->
+    <div class="view" id="view-profit">
+      <div id="settlement-area"></div>
+      <div class="profit-block">
+        <h3>💰 Final Settlement</h3>
+        <div class="profit-split" id="profit-split-cards"></div>
+        <div id="profit-breakdown" style="margin-top:20px"></div>
+      </div>
+      <div class="profit-block">
+        <h3>📋 Expenses by Category</h3>
+        <div id="expense-by-category"></div>
+      </div>
+      <div class="profit-block">
+        <h3>👤 Expenses by Payer</h3>
+        <div id="expense-by-payer"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- BOOKING MODAL -->
+<div class="modal-overlay" id="booking-modal">
+  <div class="modal">
+    <h2 id="booking-modal-title">New Booking</h2>
+    <div class="form-group"><label>Renter Name</label><input type="text" id="b-name" placeholder="Full name"/></div>
+    <div class="form-group"><label>Phone</label><input type="text" id="b-phone" placeholder="+20 1xx xxx xxxx"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Check-in</label><input type="date" id="b-checkin"/></div>
+      <div class="form-group"><label>Check-out</label><input type="date" id="b-checkout"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Total Price (EGP)</label><input type="number" id="b-price" placeholder="0" min="0"/></div>
+      <div class="form-group"><label>Status</label>
+        <select id="b-status">
+          <option value="confirmed">Confirmed</option>
+          <option value="pending">Pending</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="b-notes" rows="3" placeholder="Any notes..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModals()">Cancel</button>
+      <button class="btn-primary" onclick="saveBooking()">Save Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- EXPENSE MODAL -->
+<div class="modal-overlay" id="expense-modal">
+  <div class="modal">
+    <h2>New Expense</h2>
+    <div class="form-group"><label>Category</label>
+      <select id="e-category">
+        <option value="Cleaning">🧹 Cleaning</option>
+        <option value="Beach Cards">🏖️ Beach Cards</option>
+        <option value="Maintenance">🔧 Maintenance</option>
+        <option value="Utilities">💡 Utilities</option>
+        <option value="Supplies">🛒 Supplies</option>
+        <option value="Other">📦 Other</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Description</label><input type="text" id="e-desc" placeholder="Brief description"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Amount (EGP)</label><input type="number" id="e-amount" placeholder="0" min="0"/></div>
+      <div class="form-group"><label>Date</label><input type="date" id="e-date"/></div>
+    </div>
+    <div class="form-group">
+      <label>Paid By</label>
+      <div class="payer-toggle">
+        <button id="payer-et" onclick="setPayer('ET')" class="active-et">💼 ET (Emile)</button>
+        <button id="payer-nat" onclick="setPayer('Nathalie')">👩 Nathalie</button>
+      </div>
+    </div>
+    <div class="form-group"><label>Related Booking (optional)</label><select id="e-booking"><option value="">— Not linked —</option></select></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModals()">Cancel</button>
+      <button class="btn-primary" onclick="saveExpense()">Save Expense</button>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <div class="detail-header">
+      <div class="detail-color" id="d-color"></div>
+      <h2 id="d-name" style="margin:0;font-size:20px"></h2>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-field"><div class="dl">Check-in</div><div class="dv" id="d-checkin"></div></div>
+      <div class="detail-field"><div class="dl">Check-out</div><div class="dv" id="d-checkout"></div></div>
+      <div class="detail-field"><div class="dl">Phone</div><div class="dv" id="d-phone"></div></div>
+      <div class="detail-field"><div class="dl">Price</div><div class="dv" id="d-price"></div></div>
+      <div class="detail-field"><div class="dl">Status</div><div class="dv" id="d-status"></div></div>
+      <div class="detail-field"><div class="dl">Nights</div><div class="dv" id="d-nights"></div></div>
+    </div>
+    <div class="detail-notes" id="d-notes"></div>
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn-secondary" onclick="closeModals()">Close</button>
+      <button class="btn-primary" id="d-edit-btn">✏️ Edit</button>
+      <button class="btn-secondary" style="color:var(--coral)" id="d-delete-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">Saved</div>
+
+<script>
+// ══ CONFIG ════════════════════════════════════════════
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzVCRC6pMym3jmF9sI0qF08HRrC-KjGBxbq7thjzGEQ5BImKxN6N14fcEoLOstsk2pG/exec';
+const STORAGE_KEY = 'stella_data';
+
+const BOOKING_COLORS = [
+  '#2A6B7C','#D4614A','#6B4C9B','#2E7D55','#C87D2A',
+  '#1A6B8A','#A63D6B','#3D7A3D','#8B5C2A','#5C3D8B',
+  '#D4943A','#2A7C6B','#8B2A4A','#4A6B2A','#7C4A2A'
+];
+
+// ══ STATE ═════════════════════════════════════════════
+let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"bookings":[],"expenses":[]}');
+let calYear, calMonth;
+let editingBookingId = null;
+let currentPayer = 'ET';
+
+// ══ INIT ══════════════════════════════════════════════
+function initApp() {
+  const n = new Date();
+  calYear = n.getFullYear(); calMonth = n.getMonth();
+  renderAll(); // show cached data immediately
+  syncFromSheet(); // then pull latest from sheet
+}
+window.addEventListener('DOMContentLoaded', initApp);
+
+// ══ SHEETS SYNC ═══════════════════════════════════════
+async function sheetRequest(payload) {
+  try {
+    const res = await fetch(SHEET_URL, { method: 'POST', body: JSON.stringify(payload) });
+    const json = await res.json();
+    return json;
+  } catch(e) { return { error: e.message }; }
+}
+
+async function syncFromSheet() {
+  const btn = document.getElementById('sync-btn');
+  btn.textContent = '⟳ Syncing…'; btn.classList.add('syncing');
+  try {
+    const result = await sheetRequest({ action: 'read' });
+    if (!result || result.error) throw new Error(result?.error || 'No response');
+    data.bookings = result.bookings || [];
+    data.expenses = result.expenses || [];
+    saveLocal();
+    renderAll();
+    showToast('Synced ✓');
+  } catch(e) {
+    showToast('Sync failed — working offline');
+    renderAll();
+  }
+  btn.textContent = '⟳ Sync'; btn.classList.remove('syncing');
+}
+
+async function syncNow() { await syncFromSheet(); }
+
+async function pushToSheet() {
+  // Push both tabs sequentially and wait for each to confirm
+  const r1 = await sheetRequest({ action: 'writeBookings', data: data.bookings });
+  if (r1?.error) { showToast('⚠️ Sync error — check connection'); return false; }
+  const r2 = await sheetRequest({ action: 'writeExpenses', data: data.expenses });
+  if (r2?.error) { showToast('⚠️ Sync error — check connection'); return false; }
+  return true;
+}
+
+function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+async function save() {
+  saveLocal();
+  const ok = await pushToSheet();
+  if (ok) showToast('Saved & synced ✓');
+}
+
+// ══ HELPERS ═══════════════════════════════════════════
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+function fmtEGP(n) { return 'EGP ' + Number(n||0).toLocaleString('en-EG',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+
+function parseDate(d) {
+  if (!d) return null;
+  d = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return new Date(d + 'T00:00:00');
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(d)) {
+    const [m, day, yr] = d.split('/');
+    return new Date(parseInt(yr), parseInt(m)-1, parseInt(day));
+  }
+  const dt = new Date(d);
+  return isNaN(dt) ? null : dt;
+}
+function toISODate(d) {
+  const dt = parseDate(d);
+  if (!dt) return '';
+  return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+}
+function fmtDate(d) {
+  const dt = parseDate(d);
+  if (!dt) return '—';
+  return dt.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+}
+function nightsBetween(a, b) {
+  const d1 = parseDate(a), d2 = parseDate(b);
+  if (!d1 || !d2) return '—';
+  return Math.max(0, Math.round((d2 - d1) / 86400000));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.opacity = '1';
+  setTimeout(() => t.style.opacity = '0', 2500);
+}
+
+// ══ VIEWS ══════════════════════════════════════════════
+function showView(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'calendar') renderCalendar();
+}
+
+// ══ PROFIT LOGIC ══════════════════════════════════════
+function calcProfit() {
+  const active = data.bookings.filter(b => b.status !== 'cancelled');
+  const revenue = active.reduce((s,b) => s + Number(b.price||0), 0);
+  const totalExp = data.expenses.reduce((s,e) => s + Number(e.amount||0), 0);
+  const netProfit = revenue - totalExp;
+  const baseShare = netProfit / 2;
+  const etPaid = data.expenses.filter(e => e.paidBy === 'ET').reduce((s,e) => s + Number(e.amount||0), 0);
+  const natPaid = data.expenses.filter(e => e.paidBy === 'Nathalie').reduce((s,e) => s + Number(e.amount||0), 0);
+  const unknownPaid = data.expenses.filter(e => !e.paidBy || e.paidBy === '').reduce((s,e) => s + Number(e.amount||0), 0);
+  const eachExpenseShare = totalExp / 2;
+  const etFinal = baseShare + (etPaid - eachExpenseShare);
+  const natFinal = baseShare + (natPaid - eachExpenseShare);
+  const diff = Math.abs(etPaid - natPaid) / 2;
+  let settlementMsg = null;
+  if (etPaid > natPaid && diff > 0) settlementMsg = { payer: 'Nathalie', payee: 'ET', amount: diff };
+  else if (natPaid > etPaid && diff > 0) settlementMsg = { payer: 'ET', payee: 'Nathalie', amount: diff };
+  return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg };
+}
+
+// ══ RENDER ALL ═════════════════════════════════════════
+function renderAll() {
+  const c = calcProfit();
+  const active = data.bookings.filter(b => b.status !== 'cancelled');
+  document.getElementById('card-revenue').textContent = fmtEGP(c.revenue);
+  document.getElementById('card-bookings-count').textContent = active.length + ' booking' + (active.length !== 1 ? 's' : '');
+  document.getElementById('card-expenses').textContent = fmtEGP(c.totalExp);
+  document.getElementById('card-exp-count').textContent = data.expenses.length + ' item' + (data.expenses.length !== 1 ? 's' : '');
+  document.getElementById('card-profit').textContent = fmtEGP(c.netProfit);
+  document.getElementById('card-et').textContent = fmtEGP(c.etFinal);
+  document.getElementById('card-nat').textContent = fmtEGP(c.natFinal);
+  renderCalendar();
+  renderBookingsList();
+  renderExpensesList();
+  renderProfit(c);
+}
+
+// ══ CALENDAR ══════════════════════════════════════════
+function renderCalendar() {
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('cal-month-label').textContent = months[calMonth] + ' ' + calYear;
+  const body = document.getElementById('cal-body');
+  body.innerHTML = '';
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const daysInPrev = new Date(calYear, calMonth, 0).getDate();
+  const today = new Date();
+  let cells = [];
+  for (let i = firstDay - 1; i >= 0; i--) cells.push({ day: daysInPrev - i, cur: false });
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, cur: true });
+  while (cells.length % 7 !== 0) cells.push({ day: cells.length - firstDay - daysInMonth + 1, cur: false });
+  cells.forEach(({ day, cur }) => {
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell' + (cur ? '' : ' other-month');
+    const isToday = cur && day === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+    if (isToday) cell.classList.add('today');
+    const dn = document.createElement('div'); dn.className = 'day-num'; dn.textContent = day; cell.appendChild(dn);
+    if (cur) {
+      const cd = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      data.bookings.forEach((b, idx) => {
+        if (!b.checkin || !b.checkout || b.status === 'cancelled') return;
+        const ci = parseDate(b.checkin), co = parseDate(b.checkout), cdd = parseDate(cd);
+        if (ci && co && cdd && cdd >= ci && cdd < co) {
+          const chip = document.createElement('div');
+          chip.className = 'booking-chip';
+          chip.style.background = BOOKING_COLORS[idx % BOOKING_COLORS.length];
+          chip.textContent = b.name;
+          chip.onclick = e => { e.stopPropagation(); showDetail(b.id); };
+          cell.appendChild(chip);
+        }
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-day-btn'; addBtn.textContent = '+';
+      addBtn.onclick = () => openBookingModal(cd);
+      cell.appendChild(addBtn);
+    }
+    body.appendChild(cell);
+  });
+}
+function changeMonth(d) { calMonth += d; if (calMonth > 11) { calMonth = 0; calYear++; } if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
+function goToday() { const n = new Date(); calYear = n.getFullYear(); calMonth = n.getMonth(); renderCalendar(); }
+
+// ══ BOOKINGS LIST ══════════════════════════════════════
+function renderBookingsList() {
+  const el = document.getElementById('bookings-list');
+  if (!data.bookings.length) { el.innerHTML = '<div class="empty"><div class="icon">🛏️</div><p>No bookings yet.</p></div>'; return; }
+  const sorted = [...data.bookings].sort((a,b) => (b.checkin||'').localeCompare(a.checkin||''));
+  const sc = { confirmed:'#2A6B7C', pending:'#C87D2A', completed:'#2E7D55', cancelled:'#D4614A' };
+  el.innerHTML = sorted.map(b => {
+    const ri = data.bookings.findIndex(x => x.id === b.id);
+    const col = BOOKING_COLORS[ri % BOOKING_COLORS.length];
+    const nights = b.checkin && b.checkout ? nightsBetween(b.checkin, b.checkout) : '—';
+    return `<div class="booking-row" onclick="showDetail('${b.id}')">
+      <div class="booking-color-dot" style="background:${col}"></div>
+      <div class="booking-info">
+        <div class="name">${b.name||'Unnamed'} <span style="font-weight:400;font-size:12px;color:${sc[b.status]||'var(--muted)'}">● ${b.status}</span></div>
+        <div class="dates">${fmtDate(b.checkin)} → ${fmtDate(b.checkout)} · ${nights} night${nights!==1?'s':''}</div>
+      </div>
+      <div class="booking-price">${fmtEGP(b.price)}</div>
+      <div class="booking-actions">
+        <button class="btn-icon" onclick="event.stopPropagation();editBooking('${b.id}')">✏️</button>
+        <button class="btn-icon" onclick="event.stopPropagation();deleteBooking('${b.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══ EXPENSES LIST ══════════════════════════════════════
+function renderExpensesList() {
+  const el = document.getElementById('expenses-list');
+  if (!data.expenses.length) { el.innerHTML = '<div class="empty"><div class="icon">💸</div><p>No expenses yet.</p></div>'; return; }
+  const sorted = [...data.expenses].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  el.innerHTML = sorted.map(e => {
+    const linked = e.bookingId ? data.bookings.find(b => b.id === e.bookingId) : null;
+    const pc = e.paidBy === 'ET' ? 'et' : e.paidBy === 'Nathalie' ? 'nat' : '';
+    return `<div class="expense-row">
+      <div class="expense-category">${e.category}</div>
+      <div class="expense-payer ${pc}">${e.paidBy||'Unknown'}</div>
+      <div class="expense-info">
+        <div class="desc">${e.desc||e.category}</div>
+        <div class="meta">${fmtDate(e.date)}${linked ? ' · ' + linked.name : ''}</div>
+      </div>
+      <div class="expense-amount">− ${fmtEGP(e.amount)}</div>
+      <div class="booking-actions">
+        <button class="btn-icon" onclick="deleteExpense('${e.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══ PROFIT VIEW ═══════════════════════════════════════
+function renderProfit(c) {
+  const sa = document.getElementById('settlement-area');
+  if (c.settlementMsg) {
+    const s = c.settlementMsg;
+    sa.innerHTML = `<div class="settlement-banner">
+      <div class="icon">⚖️</div>
+      <div class="text"><strong>Settlement Required</strong>
+        <p><strong>${s.payer}</strong> paid less in expenses than their fair share — they owe <strong>${s.payee}</strong>:</p>
+      </div>
+      <div class="amount">${fmtEGP(s.amount)}</div>
+    </div>`;
+  } else { sa.innerHTML = ''; }
+
+  document.getElementById('profit-split-cards').innerHTML = `
+    <div class="split-card">
+      <div class="person">ET (Emile)</div>
+      <div class="amount">${fmtEGP(c.etFinal)}</div>
+      <div class="note">Paid ${fmtEGP(c.etPaid)} in expenses</div>
+    </div>
+    <div class="split-card">
+      <div class="person">Nathalie</div>
+      <div class="amount">${fmtEGP(c.natFinal)}</div>
+      <div class="note">Paid ${fmtEGP(c.natPaid)} in expenses</div>
+    </div>`;
+
+  document.getElementById('profit-breakdown').innerHTML = `
+    <div class="breakdown-section-title">Revenue & Expenses</div>
+    <div class="breakdown-row"><span>Gross Revenue</span><span class="pos">${fmtEGP(c.revenue)}</span></div>
+    <div class="breakdown-row"><span>Total Expenses</span><span class="neg">− ${fmtEGP(c.totalExp)}</span></div>
+    <div class="breakdown-row"><span>Net Profit</span><span class="pos">${fmtEGP(c.netProfit)}</span></div>
+    <div class="breakdown-section-title">Base 50/50 Split</div>
+    <div class="breakdown-row"><span>ET base share</span><span class="pos">${fmtEGP(c.baseShare)}</span></div>
+    <div class="breakdown-row"><span>Nathalie base share</span><span class="pos">${fmtEGP(c.baseShare)}</span></div>
+    <div class="breakdown-section-title">Expense Settlement</div>
+    <div class="breakdown-row"><span>ET paid</span><span>${fmtEGP(c.etPaid)}</span></div>
+    <div class="breakdown-row"><span>Nathalie paid</span><span>${fmtEGP(c.natPaid)}</span></div>
+    <div class="breakdown-row"><span>Each person's fair share</span><span class="neg">− ${fmtEGP(c.eachExpenseShare)}</span></div>
+    <div class="breakdown-section-title">Final Cash Position</div>
+    <div class="breakdown-row"><span>ET takes home</span><span class="pos">${fmtEGP(c.etFinal)}</span></div>
+    <div class="breakdown-row"><span>Nathalie takes home</span><span class="pos">${fmtEGP(c.natFinal)}</span></div>`;
+
+  const cats = {};
+  data.expenses.forEach(e => { cats[e.category] = (cats[e.category]||0) + Number(e.amount||0); });
+  document.getElementById('expense-by-category').innerHTML = Object.keys(cats).length
+    ? Object.entries(cats).sort((a,b) => b[1]-a[1]).map(([cat,amt]) => `<div class="breakdown-row"><span>${cat}</span><span class="neg">− ${fmtEGP(amt)}</span></div>`).join('')
+    : '<div class="empty" style="padding:20px"><p>No expenses yet.</p></div>';
+
+  document.getElementById('expense-by-payer').innerHTML = `
+    <div class="breakdown-row"><span>ET paid</span><span>${fmtEGP(c.etPaid)}</span></div>
+    <div class="breakdown-row"><span>Nathalie paid</span><span>${fmtEGP(c.natPaid)}</span></div>
+    ${c.unknownPaid > 0 ? `<div class="breakdown-row"><span>Payer unknown</span><span class="neg">− ${fmtEGP(c.unknownPaid)}</span></div>` : ''}`;
+}
+
+// ══ BOOKING MODAL ══════════════════════════════════════
+function openBookingModal(prefillDate = null) {
+  editingBookingId = null;
+  document.getElementById('booking-modal-title').textContent = 'New Booking';
+  document.getElementById('b-name').value = '';
+  document.getElementById('b-phone').value = '';
+  document.getElementById('b-checkin').value = prefillDate || '';
+  document.getElementById('b-checkout').value = '';
+  document.getElementById('b-price').value = '';
+  document.getElementById('b-status').value = 'confirmed';
+  document.getElementById('b-notes').value = '';
+  document.getElementById('booking-modal').classList.add('open');
+}
+
+function editBooking(id) {
+  const b = data.bookings.find(x => x.id === id); if (!b) return;
+  editingBookingId = id;
+  document.getElementById('booking-modal-title').textContent = 'Edit Booking';
+  document.getElementById('b-name').value = b.name || '';
+  document.getElementById('b-phone').value = b.phone || '';
+  document.getElementById('b-checkin').value = toISODate(b.checkin) || '';
+  document.getElementById('b-checkout').value = toISODate(b.checkout) || '';
+  document.getElementById('b-price').value = b.price || '';
+  document.getElementById('b-status').value = b.status || 'confirmed';
+  document.getElementById('b-notes').value = b.notes || '';
+  closeModals();
+  setTimeout(() => document.getElementById('booking-modal').classList.add('open'), 10);
+}
+
+async function saveBooking() {
+  const name = document.getElementById('b-name').value.trim();
+  const checkin = document.getElementById('b-checkin').value;
+  const checkout = document.getElementById('b-checkout').value;
+  if (!name) { alert('Please enter a renter name.'); return; }
+  if (!checkin || !checkout) { alert('Please set check-in and check-out dates.'); return; }
+  if (checkin >= checkout) { alert('Check-out must be after check-in.'); return; }
+  const booking = {
+    id: editingBookingId || genId(), name,
+    phone: document.getElementById('b-phone').value.trim(),
+    checkin, checkout,
+    price: parseFloat(document.getElementById('b-price').value) || 0,
+    status: document.getElementById('b-status').value,
+    notes: document.getElementById('b-notes').value.trim(),
+  };
+  if (editingBookingId) { const i = data.bookings.findIndex(b => b.id === editingBookingId); if (i >= 0) data.bookings[i] = booking; }
+  else data.bookings.push(booking);
+  closeModals(); renderAll(); await save();
+}
+
+async function deleteBooking(id) {
+  if (!confirm('Delete this booking?')) return;
+  data.bookings = data.bookings.filter(b => b.id !== id);
+  closeModals();
+  renderAll();
+  await save();
+}
+
+// ══ EXPENSE MODAL ══════════════════════════════════════
+function setPayer(p) {
+  currentPayer = p;
+  document.getElementById('payer-et').className = p === 'ET' ? 'active-et' : '';
+  document.getElementById('payer-nat').className = p === 'Nathalie' ? 'active-nat' : '';
+}
+
+function openExpenseModal() {
+  const sel = document.getElementById('e-booking');
+  sel.innerHTML = '<option value="">— Not linked —</option>';
+  data.bookings.forEach(b => { sel.innerHTML += `<option value="${b.id}">${b.name} (${fmtDate(b.checkin)})</option>`; });
+  document.getElementById('e-category').value = 'Cleaning';
+  document.getElementById('e-desc').value = '';
+  document.getElementById('e-amount').value = '';
+  document.getElementById('e-date').value = new Date().toISOString().slice(0,10);
+  setPayer('ET');
+  document.getElementById('expense-modal').classList.add('open');
+}
+
+async function saveExpense() {
+  const amount = parseFloat(document.getElementById('e-amount').value);
+  if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+  const expense = {
+    id: genId(),
+    category: document.getElementById('e-category').value,
+    desc: document.getElementById('e-desc').value.trim(),
+    amount,
+    date: document.getElementById('e-date').value,
+    paidBy: currentPayer,
+    bookingId: document.getElementById('e-booking').value || '',
+  };
+  data.expenses.push(expense);
+  closeModals(); renderAll(); await save();
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  data.expenses = data.expenses.filter(e => e.id !== id);
+  renderAll();
+  await save();
+}
+
+// ══ DETAIL MODAL ══════════════════════════════════════
+function showDetail(id) {
+  const b = data.bookings.find(x => x.id === id); if (!b) return;
+  const idx = data.bookings.findIndex(x => x.id === id);
+  const col = BOOKING_COLORS[idx % BOOKING_COLORS.length];
+  const nights = b.checkin && b.checkout ? nightsBetween(b.checkin, b.checkout) : '—';
+  document.getElementById('d-color').style.background = col;
+  document.getElementById('d-name').textContent = b.name || 'Unnamed';
+  document.getElementById('d-checkin').textContent = fmtDate(b.checkin);
+  document.getElementById('d-checkout').textContent = fmtDate(b.checkout);
+  document.getElementById('d-phone').textContent = b.phone || '—';
+  document.getElementById('d-price').textContent = fmtEGP(b.price);
+  document.getElementById('d-status').textContent = b.status || '—';
+  document.getElementById('d-nights').textContent = nights + (nights !== '—' ? ' night' + (nights !== 1 ? 's' : '') : '');
+  document.getElementById('d-notes').textContent = b.notes || 'No notes.';
+  document.getElementById('d-edit-btn').onclick = () => { closeModals(); editBooking(id); };
+  document.getElementById('d-delete-btn').onclick = () => deleteBooking(id);
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+// ══ CLOSE ══════════════════════════════════════════════
+function closeModals() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open')); }
+document.querySelectorAll('.modal-overlay').forEach(m => { m.addEventListener('click', e => { if (e.target === m) closeModals(); }); });
+</script>
+</body>
+</html>
