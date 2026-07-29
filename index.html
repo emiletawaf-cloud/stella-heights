@@ -556,22 +556,11 @@ function calcProfit() {
 
 // ══ RENDER ALL ═════════════════════════════════════════
 function renderAll() {
-  const c = calcProfit();
-  const visibleBookings = data.bookings.filter(b => b.status !== 'cancelled');
-  const totalWorth = visibleBookings.reduce((s,b) => s + Number(b.price||0), 0);
-  document.getElementById('card-revenue').textContent = fmtEGP(c.revenue);
-  document.getElementById('card-bookings-count').textContent = visibleBookings.length + ' booking' + (visibleBookings.length !== 1 ? 's' : '') + (c.pendingRevenue > 0 ? ` · ${fmtEGP(c.pendingRevenue)} pending` : '');
-  document.getElementById('card-total-worth').textContent = fmtEGP(totalWorth);
-  document.getElementById('card-worth-sub').textContent = `${fmtEGP(totalWorth - c.revenue)} still outstanding`;
-  document.getElementById('card-expenses').textContent = fmtEGP(c.totalExp);
-  document.getElementById('card-exp-count').textContent = data.expenses.length + ' item' + (data.expenses.length !== 1 ? 's' : '');
-  document.getElementById('card-profit').textContent = fmtEGP(c.netProfit);
-  document.getElementById('card-et').textContent = fmtEGP(c.etFinal);
-  document.getElementById('card-nat').textContent = fmtEGP(c.natFinal);
+  updateSummaryCards();
   renderCalendar();
   renderBookingsList();
   renderExpensesList();
-  renderProfit(c);
+  renderProfit(calcProfit());
 }
 
 // ══ CALENDAR ══════════════════════════════════════════
@@ -678,7 +667,7 @@ function renderBookingsList() {
               onblur="inlineSave('${b.id}','downpayment',this.value)" onkeydown="if(event.key==='Enter')this.blur()"/>
           </div>
           <div style="font-size:11px;color:var(--muted);text-align:right">
-            Received: <strong style="color:${received>0?'var(--green)':'var(--muted)'}">${fmtEGP(received)}</strong>
+            Received: <strong class="received-label" style="color:${received>0?'var(--green)':'var(--muted)'}">${fmtEGP(received)}</strong>
           </div>
         </div>
         <button class="btn-icon" style="font-size:12px" onclick="deleteBooking('${b.id}')">🗑️</button>
@@ -690,11 +679,13 @@ function renderBookingsList() {
 async function inlineSave(id, field, value) {
   const b = data.bookings.find(x => x.id === id); if (!b) return;
   const parsed = (field === 'price' || field === 'downpayment') ? (parseFloat(value)||0) : value;
-  if (b[field] === parsed) return; // no change
+  if (String(b[field]) === String(parsed)) return; // no change
   b[field] = parsed;
   showSaving(id);
+  // Update received display inline without full re-render
+  updateReceivedDisplay(id);
+  updateSummaryCards();
   await save();
-  renderAll();
 }
 
 async function inlineSaveStatus(id, selectEl) {
@@ -702,7 +693,6 @@ async function inlineSaveStatus(id, selectEl) {
   const newStatus = selectEl.value;
   const prevStatus = b.status;
   if (newStatus === prevStatus) return;
-  // keepDownpayment logic on cancellation
   if (newStatus === 'cancelled') {
     b.keepDownpayment = prevStatus === 'downpayment' || prevStatus === 'confirmed';
   } else {
@@ -710,11 +700,42 @@ async function inlineSaveStatus(id, selectEl) {
   }
   b.status = newStatus;
   selectEl.style.color = { confirmed:'#2E7D55', downpayment:'#C87D2A', pending:'#7A7267', cancelled:'#D4614A' }[newStatus] || 'var(--muted)';
-  // Show/hide downpayment row
   document.getElementById('dp-row-' + id).style.display = newStatus === 'downpayment' ? 'flex' : 'none';
+  // Update color dot
+  const ri = data.bookings.findIndex(x => x.id === id);
+  const dot = document.querySelector(`#brow-${id} .booking-color-dot`);
+  if (dot) dot.style.background = newStatus === 'cancelled' ? '#ccc' : BOOKING_COLORS[ri % BOOKING_COLORS.length];
+  updateReceivedDisplay(id);
+  updateSummaryCards();
   showSaving(id);
   await save();
-  renderAll();
+  // Re-render calendar only since status affects it
+  renderCalendar();
+}
+
+function updateReceivedDisplay(id) {
+  const b = data.bookings.find(x => x.id === id); if (!b) return;
+  const received = cashReceived(b);
+  const row = document.getElementById('brow-' + id); if (!row) return;
+  const recEl = row.querySelector('.received-label');
+  if (recEl) {
+    recEl.textContent = fmtEGP(received);
+    recEl.style.color = received > 0 ? 'var(--green)' : 'var(--muted)';
+  }
+}
+
+function updateSummaryCards() {
+  const c = calcProfit();
+  const visibleBookings = data.bookings.filter(b => b.status !== 'cancelled');
+  const totalWorth = visibleBookings.reduce((s,b) => s + Number(b.price||0), 0);
+  document.getElementById('card-revenue').textContent = fmtEGP(c.revenue);
+  document.getElementById('card-bookings-count').textContent = visibleBookings.length + ' booking' + (visibleBookings.length !== 1 ? 's' : '') + (c.pendingRevenue > 0 ? ` · ${fmtEGP(c.pendingRevenue)} pending` : '');
+  document.getElementById('card-total-worth').textContent = fmtEGP(totalWorth);
+  document.getElementById('card-worth-sub').textContent = `${fmtEGP(totalWorth - c.revenue)} still outstanding`;
+  document.getElementById('card-expenses').textContent = fmtEGP(c.totalExp);
+  document.getElementById('card-profit').textContent = fmtEGP(c.netProfit);
+  document.getElementById('card-et').textContent = fmtEGP(c.etFinal);
+  document.getElementById('card-nat').textContent = fmtEGP(c.natFinal);
 }
 
 function showSaving(id) {
