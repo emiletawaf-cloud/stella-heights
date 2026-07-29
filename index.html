@@ -145,7 +145,66 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
 .detail-field .dv{font-size:14px;font-weight:500;}
 .detail-notes{background:var(--sand);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--muted);font-style:italic;}
 
-/* EMPTY */
+/* INLINE EDITING */
+.booking-row { cursor: default; }
+.inline-field {
+  background: transparent;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  padding: 2px 4px;
+  border-radius: 4px;
+  width: 100%;
+  cursor: pointer;
+  transition: background .15s;
+}
+.inline-field:hover { background: var(--warm); }
+.inline-field:focus {
+  background: var(--white);
+  outline: 1.5px solid var(--ocean);
+  cursor: text;
+}
+.inline-select {
+  background: transparent;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.inline-select:hover { background: var(--warm); }
+.inline-select:focus { background: var(--white); outline: 1.5px solid var(--ocean); }
+.inline-price {
+  font-weight: 600;
+  font-size: 14px;
+  width: 110px;
+  text-align: right;
+}
+.inline-dp-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+.inline-dp-label {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.saving-indicator {
+  font-size: 10px;
+  color: var(--ocean);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity .2s;
+  white-space: nowrap;
+}
+.saving-indicator.show { opacity: 1; }
 .empty{text-align:center;padding:56px 20px;color:var(--muted);}
 .empty .icon{font-size:40px;margin-bottom:12px;}
 .empty p{font-size:14px;}
@@ -186,9 +245,10 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
   <main>
     <!-- SUMMARY CARDS -->
     <div class="cards-row">
-      <div class="card"><div class="label">Total Revenue</div><div class="value" id="card-revenue" style="color:var(--ocean)">EGP 0</div><div class="sub" id="card-bookings-count">0 bookings</div></div>
+      <div class="card"><div class="label">Cash Received</div><div class="value" id="card-revenue" style="color:var(--ocean)">EGP 0</div><div class="sub" id="card-bookings-count">0 bookings</div></div>
+      <div class="card"><div class="label">Total Bookings Worth</div><div class="value" id="card-total-worth" style="color:var(--ocean)">EGP 0</div><div class="sub" id="card-worth-sub">When all complete</div></div>
       <div class="card"><div class="label">Total Expenses</div><div class="value" id="card-expenses" style="color:var(--coral)">EGP 0</div><div class="sub" id="card-exp-count">0 items</div></div>
-      <div class="card"><div class="label">Net Profit</div><div class="value" id="card-profit" style="color:var(--green)">EGP 0</div><div class="sub">Revenue − expenses</div></div>
+      <div class="card"><div class="label">Net Profit</div><div class="value" id="card-profit" style="color:var(--green)">EGP 0</div><div class="sub">Cash basis</div></div>
       <div class="card"><div class="label">ET Takes Home</div><div class="value" id="card-et" style="color:var(--green)">EGP 0</div><div class="sub">After settlements</div></div>
       <div class="card"><div class="label">Nathalie Takes Home</div><div class="value" id="card-nat" style="color:var(--green)">EGP 0</div><div class="sub">After settlements</div></div>
     </div>
@@ -344,7 +404,7 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
 
 <script>
 // ══ CONFIG ════════════════════════════════════════════
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyHHhFnEpTVMx4a4j31HK9I_cFlDW2D5pTjZYokGvQKj1RrALcOTj6mds6NMtGdDPRE/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzVCRC6pMym3jmF9sI0qF08HRrC-KjGBxbq7thjzGEQ5BImKxN6N14fcEoLOstsk2pG/exec';
 const STORAGE_KEY = 'stella_data';
 
 const BOOKING_COLORS = [
@@ -498,8 +558,11 @@ function calcProfit() {
 function renderAll() {
   const c = calcProfit();
   const visibleBookings = data.bookings.filter(b => b.status !== 'cancelled');
+  const totalWorth = visibleBookings.reduce((s,b) => s + Number(b.price||0), 0);
   document.getElementById('card-revenue').textContent = fmtEGP(c.revenue);
   document.getElementById('card-bookings-count').textContent = visibleBookings.length + ' booking' + (visibleBookings.length !== 1 ? 's' : '') + (c.pendingRevenue > 0 ? ` · ${fmtEGP(c.pendingRevenue)} pending` : '');
+  document.getElementById('card-total-worth').textContent = fmtEGP(totalWorth);
+  document.getElementById('card-worth-sub').textContent = `${fmtEGP(totalWorth - c.revenue)} still outstanding`;
   document.getElementById('card-expenses').textContent = fmtEGP(c.totalExp);
   document.getElementById('card-exp-count').textContent = data.expenses.length + ' item' + (data.expenses.length !== 1 ? 's' : '');
   document.getElementById('card-profit').textContent = fmtEGP(c.netProfit);
@@ -556,33 +619,109 @@ function renderCalendar() {
 function changeMonth(d) { calMonth += d; if (calMonth > 11) { calMonth = 0; calYear++; } if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
 function goToday() { const n = new Date(); calYear = n.getFullYear(); calMonth = n.getMonth(); renderCalendar(); }
 
-// ══ BOOKINGS LIST ══════════════════════════════════════
+// ══ BOOKINGS LIST (INLINE EDIT) ════════════════════════
 function renderBookingsList() {
   const el = document.getElementById('bookings-list');
   if (!data.bookings.length) { el.innerHTML = '<div class="empty"><div class="icon">🛏️</div><p>No bookings yet.</p></div>'; return; }
-  const sorted = [...data.bookings].sort((a,b) => (b.checkin||'').localeCompare(a.checkin||''));
+  const sorted = [...data.bookings].sort((a,b) => (a.checkin||'').localeCompare(b.checkin||''));
   const sc = { confirmed:'#2E7D55', downpayment:'#C87D2A', pending:'#7A7267', cancelled:'#D4614A' };
   const sl = { confirmed:'Confirmed', downpayment:'Downpayment Paid', pending:'Pending', cancelled:'Cancelled' };
+
   el.innerHTML = sorted.map(b => {
     const ri = data.bookings.findIndex(x => x.id === b.id);
     const col = BOOKING_COLORS[ri % BOOKING_COLORS.length];
     const nights = b.checkin && b.checkout ? nightsBetween(b.checkin, b.checkout) : '—';
     const received = cashReceived(b);
-    const downpaymentTag = b.status === 'downpayment' && b.downpayment
-      ? `<span style="font-size:11px;color:#C87D2A;margin-left:6px">↓ ${fmtEGP(b.downpayment)}</span>` : '';
-    return `<div class="booking-row" onclick="showDetail('${b.id}')">
-      <div class="booking-color-dot" style="background:${b.status==='cancelled'?'#ccc':col}"></div>
-      <div class="booking-info">
-        <div class="name">${b.name||'Unnamed'} <span style="font-weight:400;font-size:12px;color:${sc[b.status]||'var(--muted)'}">● ${sl[b.status]||b.status}</span>${downpaymentTag}</div>
-        <div class="dates">${fmtDate(b.checkin)} → ${fmtDate(b.checkout)} · ${nights} night${nights!==1?'s':''}</div>
+    const showDp = b.status === 'downpayment';
+    return `<div class="booking-row" id="brow-${b.id}" style="align-items:flex-start;padding:12px 20px">
+      <div class="booking-color-dot" style="background:${b.status==='cancelled'?'#ccc':col};margin-top:6px;flex-shrink:0"></div>
+      <div class="booking-info" style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <input class="inline-field" style="font-weight:600;font-size:15px;width:160px" value="${b.name||''}"
+            onblur="inlineSave('${b.id}','name',this.value)" onkeydown="if(event.key==='Enter')this.blur()"/>
+          <input class="inline-field" style="font-size:12px;color:var(--muted);width:130px" value="${b.phone||''}"
+            placeholder="phone" onblur="inlineSave('${b.id}','phone',this.value)" onkeydown="if(event.key==='Enter')this.blur()"/>
+          <span class="saving-indicator" id="saving-${b.id}">saving…</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input type="date" class="inline-field" style="font-size:12px;color:var(--muted);width:130px" value="${toISODate(b.checkin)||''}"
+            onblur="inlineSave('${b.id}','checkin',this.value)"/>
+          <span style="font-size:11px;color:var(--muted)">→</span>
+          <input type="date" class="inline-field" style="font-size:12px;color:var(--muted);width:130px" value="${toISODate(b.checkout)||''}"
+            onblur="inlineSave('${b.id}','checkout',this.value)"/>
+          <span style="font-size:12px;color:var(--muted)">${nights} night${nights!==1?'s':''}</span>
+        </div>
+        <div style="margin-top:4px">
+          <textarea class="inline-field" style="font-size:11px;color:var(--muted);width:100%;resize:none;height:32px;line-height:1.4"
+            placeholder="notes…" onblur="inlineSave('${b.id}','notes',this.value)"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.blur()}"
+          >${b.notes||''}</textarea>
+        </div>
       </div>
-      <div class="booking-price" style="color:${received>0?'var(--green)':'var(--muted)'}">${fmtEGP(received)}</div>
-      <div class="booking-actions">
-        <button class="btn-icon" onclick="event.stopPropagation();editBooking('${b.id}')">✏️</button>
-        <button class="btn-icon" onclick="event.stopPropagation();deleteBooking('${b.id}')">🗑️</button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;margin-left:12px">
+        <select class="inline-select" style="color:${sc[b.status]||'var(--muted)'}"
+          onchange="inlineSaveStatus('${b.id}',this)">
+          <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
+          <option value="downpayment" ${b.status==='downpayment'?'selected':''}>Downpayment Paid</option>
+          <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
+          <option value="cancelled" ${b.status==='cancelled'?'selected':''}>Cancelled</option>
+        </select>
+        <div class="inline-dp-wrap">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:11px;color:var(--muted)">Total</span>
+            <input type="number" class="inline-field inline-price" value="${b.price||0}"
+              onblur="inlineSave('${b.id}','price',this.value)" onkeydown="if(event.key==='Enter')this.blur()"/>
+          </div>
+          <div id="dp-row-${b.id}" style="display:${showDp?'flex':'none'};align-items:center;gap:4px">
+            <span style="font-size:11px;color:#C87D2A">↓ DP</span>
+            <input type="number" class="inline-field inline-price" style="color:#C87D2A" value="${b.downpayment||0}"
+              onblur="inlineSave('${b.id}','downpayment',this.value)" onkeydown="if(event.key==='Enter')this.blur()"/>
+          </div>
+          <div style="font-size:11px;color:var(--muted);text-align:right">
+            Received: <strong style="color:${received>0?'var(--green)':'var(--muted)'}">${fmtEGP(received)}</strong>
+          </div>
+        </div>
+        <button class="btn-icon" style="font-size:12px" onclick="deleteBooking('${b.id}')">🗑️</button>
       </div>
     </div>`;
   }).join('');
+}
+
+async function inlineSave(id, field, value) {
+  const b = data.bookings.find(x => x.id === id); if (!b) return;
+  const parsed = (field === 'price' || field === 'downpayment') ? (parseFloat(value)||0) : value;
+  if (b[field] === parsed) return; // no change
+  b[field] = parsed;
+  showSaving(id);
+  await save();
+  renderAll();
+}
+
+async function inlineSaveStatus(id, selectEl) {
+  const b = data.bookings.find(x => x.id === id); if (!b) return;
+  const newStatus = selectEl.value;
+  const prevStatus = b.status;
+  if (newStatus === prevStatus) return;
+  // keepDownpayment logic on cancellation
+  if (newStatus === 'cancelled') {
+    b.keepDownpayment = prevStatus === 'downpayment' || prevStatus === 'confirmed';
+  } else {
+    b.keepDownpayment = false;
+  }
+  b.status = newStatus;
+  selectEl.style.color = { confirmed:'#2E7D55', downpayment:'#C87D2A', pending:'#7A7267', cancelled:'#D4614A' }[newStatus] || 'var(--muted)';
+  // Show/hide downpayment row
+  document.getElementById('dp-row-' + id).style.display = newStatus === 'downpayment' ? 'flex' : 'none';
+  showSaving(id);
+  await save();
+  renderAll();
+}
+
+function showSaving(id) {
+  const el = document.getElementById('saving-' + id);
+  if (!el) return;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1500);
 }
 
 // ══ EXPENSES LIST ══════════════════════════════════════
