@@ -263,14 +263,15 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
     <div class="form-row">
       <div class="form-group"><label>Total Price (EGP)</label><input type="number" id="b-price" placeholder="0" min="0"/></div>
       <div class="form-group"><label>Status</label>
-        <select id="b-status">
-          <option value="confirmed">Confirmed</option>
+        <select id="b-status" onchange="toggleDownpaymentField()">
           <option value="pending">Pending</option>
-          <option value="completed">Completed</option>
+          <option value="downpayment">Downpayment Paid</option>
+          <option value="confirmed">Confirmed / Full Payment</option>
           <option value="cancelled">Cancelled</option>
         </select>
       </div>
     </div>
+    <div class="form-group" id="b-downpayment-group"><label>Downpayment Amount (EGP)</label><input type="number" id="b-downpayment" placeholder="0" min="0"/></div>
     <div class="form-group"><label>Notes</label><textarea id="b-notes" rows="3" placeholder="Any notes..."></textarea></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModals()">Cancel</button>
@@ -324,7 +325,9 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
       <div class="detail-field"><div class="dl">Check-in</div><div class="dv" id="d-checkin"></div></div>
       <div class="detail-field"><div class="dl">Check-out</div><div class="dv" id="d-checkout"></div></div>
       <div class="detail-field"><div class="dl">Phone</div><div class="dv" id="d-phone"></div></div>
-      <div class="detail-field"><div class="dl">Price</div><div class="dv" id="d-price"></div></div>
+      <div class="detail-field"><div class="dl">Total Price</div><div class="dv" id="d-price"></div></div>
+      <div class="detail-field"><div class="dl">Downpayment</div><div class="dv" id="d-downpayment"></div></div>
+      <div class="detail-field"><div class="dl">Cash Received</div><div class="dv" id="d-received"></div></div>
       <div class="detail-field"><div class="dl">Status</div><div class="dv" id="d-status"></div></div>
       <div class="detail-field"><div class="dl">Nights</div><div class="dv" id="d-nights"></div></div>
     </div>
@@ -396,7 +399,7 @@ async function syncNow() { await syncFromSheet(); }
 
 async function pushToSheet() {
   // Push both tabs sequentially and wait for each to confirm
-  const r1 = await sheetRequest({ action: 'writeBookings', data: data.bookings });
+  const r1 = await sheetRequest({ action: 'writeBookings', data: data.bookings, headers: ['id','name','phone','checkin','checkout','price','downpayment','keepDownpayment','status','notes'] });
   if (r1?.error) { showToast('⚠️ Sync error — check connection'); return false; }
   const r2 = await sheetRequest({ action: 'writeExpenses', data: data.expenses });
   if (r2?.error) { showToast('⚠️ Sync error — check connection'); return false; }
@@ -458,9 +461,19 @@ function showView(name, btn) {
 }
 
 // ══ PROFIT LOGIC ══════════════════════════════════════
+function cashReceived(b) {
+  if (b.status === 'cancelled') {
+    // Keep downpayment only if it was recorded (downpayment status was reached before cancellation)
+    return Number(b.keepDownpayment ? b.downpayment||0 : 0);
+  }
+  if (b.status === 'pending') return 0;
+  if (b.status === 'downpayment') return Number(b.downpayment||0);
+  if (b.status === 'confirmed') return Number(b.price||0);
+  return 0;
+}
+
 function calcProfit() {
-  const active = data.bookings.filter(b => b.status !== 'cancelled');
-  const revenue = active.reduce((s,b) => s + Number(b.price||0), 0);
+  const revenue = data.bookings.reduce((s,b) => s + cashReceived(b), 0);
   const totalExp = data.expenses.reduce((s,e) => s + Number(e.amount||0), 0);
   const netProfit = revenue - totalExp;
   const baseShare = netProfit / 2;
@@ -474,15 +487,20 @@ function calcProfit() {
   let settlementMsg = null;
   if (etPaid > natPaid && diff > 0) settlementMsg = { payer: 'Nathalie', payee: 'ET', amount: diff };
   else if (natPaid > etPaid && diff > 0) settlementMsg = { payer: 'ET', payee: 'Nathalie', amount: diff };
-  return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg };
+  // Pending revenue (expected but not yet received)
+  const pendingRevenue = data.bookings.filter(b => b.status === 'downpayment')
+    .reduce((s,b) => s + (Number(b.price||0) - Number(b.downpayment||0)), 0)
+    + data.bookings.filter(b => b.status === 'pending')
+    .reduce((s,b) => s + Number(b.price||0), 0);
+  return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg, pendingRevenue };
 }
 
 // ══ RENDER ALL ═════════════════════════════════════════
 function renderAll() {
   const c = calcProfit();
-  const active = data.bookings.filter(b => b.status !== 'cancelled');
+  const visibleBookings = data.bookings.filter(b => b.status !== 'cancelled');
   document.getElementById('card-revenue').textContent = fmtEGP(c.revenue);
-  document.getElementById('card-bookings-count').textContent = active.length + ' booking' + (active.length !== 1 ? 's' : '');
+  document.getElementById('card-bookings-count').textContent = visibleBookings.length + ' booking' + (visibleBookings.length !== 1 ? 's' : '') + (c.pendingRevenue > 0 ? ` · ${fmtEGP(c.pendingRevenue)} pending` : '');
   document.getElementById('card-expenses').textContent = fmtEGP(c.totalExp);
   document.getElementById('card-exp-count').textContent = data.expenses.length + ' item' + (data.expenses.length !== 1 ? 's' : '');
   document.getElementById('card-profit').textContent = fmtEGP(c.netProfit);
@@ -544,18 +562,22 @@ function renderBookingsList() {
   const el = document.getElementById('bookings-list');
   if (!data.bookings.length) { el.innerHTML = '<div class="empty"><div class="icon">🛏️</div><p>No bookings yet.</p></div>'; return; }
   const sorted = [...data.bookings].sort((a,b) => (b.checkin||'').localeCompare(a.checkin||''));
-  const sc = { confirmed:'#2A6B7C', pending:'#C87D2A', completed:'#2E7D55', cancelled:'#D4614A' };
+  const sc = { confirmed:'#2E7D55', downpayment:'#C87D2A', pending:'#7A7267', cancelled:'#D4614A' };
+  const sl = { confirmed:'Confirmed', downpayment:'Downpayment Paid', pending:'Pending', cancelled:'Cancelled' };
   el.innerHTML = sorted.map(b => {
     const ri = data.bookings.findIndex(x => x.id === b.id);
     const col = BOOKING_COLORS[ri % BOOKING_COLORS.length];
     const nights = b.checkin && b.checkout ? nightsBetween(b.checkin, b.checkout) : '—';
+    const received = cashReceived(b);
+    const downpaymentTag = b.status === 'downpayment' && b.downpayment
+      ? `<span style="font-size:11px;color:#C87D2A;margin-left:6px">↓ ${fmtEGP(b.downpayment)}</span>` : '';
     return `<div class="booking-row" onclick="showDetail('${b.id}')">
-      <div class="booking-color-dot" style="background:${col}"></div>
+      <div class="booking-color-dot" style="background:${b.status==='cancelled'?'#ccc':col}"></div>
       <div class="booking-info">
-        <div class="name">${b.name||'Unnamed'} <span style="font-weight:400;font-size:12px;color:${sc[b.status]||'var(--muted)'}">● ${b.status}</span></div>
+        <div class="name">${b.name||'Unnamed'} <span style="font-weight:400;font-size:12px;color:${sc[b.status]||'var(--muted)'}">● ${sl[b.status]||b.status}</span>${downpaymentTag}</div>
         <div class="dates">${fmtDate(b.checkin)} → ${fmtDate(b.checkout)} · ${nights} night${nights!==1?'s':''}</div>
       </div>
-      <div class="booking-price">${fmtEGP(b.price)}</div>
+      <div class="booking-price" style="color:${received>0?'var(--green)':'var(--muted)'}">${fmtEGP(received)}</div>
       <div class="booking-actions">
         <button class="btn-icon" onclick="event.stopPropagation();editBooking('${b.id}')">✏️</button>
         <button class="btn-icon" onclick="event.stopPropagation();deleteBooking('${b.id}')">🗑️</button>
@@ -614,10 +636,11 @@ function renderProfit(c) {
     </div>`;
 
   document.getElementById('profit-breakdown').innerHTML = `
-    <div class="breakdown-section-title">Revenue & Expenses</div>
-    <div class="breakdown-row"><span>Gross Revenue</span><span class="pos">${fmtEGP(c.revenue)}</span></div>
+    <div class="breakdown-section-title">Cash Received</div>
+    <div class="breakdown-row"><span>Cash received (confirmed + downpayments)</span><span class="pos">${fmtEGP(c.revenue)}</span></div>
+    ${c.pendingRevenue > 0 ? `<div class="breakdown-row"><span>Pending / outstanding balance</span><span style="color:var(--muted)">${fmtEGP(c.pendingRevenue)}</span></div>` : ''}
     <div class="breakdown-row"><span>Total Expenses</span><span class="neg">− ${fmtEGP(c.totalExp)}</span></div>
-    <div class="breakdown-row"><span>Net Profit</span><span class="pos">${fmtEGP(c.netProfit)}</span></div>
+    <div class="breakdown-row"><span>Net Profit (cash basis)</span><span class="pos">${fmtEGP(c.netProfit)}</span></div>
     <div class="breakdown-section-title">Base 50/50 Split</div>
     <div class="breakdown-row"><span>ET base share</span><span class="pos">${fmtEGP(c.baseShare)}</span></div>
     <div class="breakdown-row"><span>Nathalie base share</span><span class="pos">${fmtEGP(c.baseShare)}</span></div>
@@ -642,6 +665,11 @@ function renderProfit(c) {
 }
 
 // ══ BOOKING MODAL ══════════════════════════════════════
+function toggleDownpaymentField() {
+  const status = document.getElementById('b-status').value;
+  document.getElementById('b-downpayment-group').style.display = status === 'downpayment' ? 'block' : 'none';
+}
+
 function openBookingModal(prefillDate = null) {
   editingBookingId = null;
   document.getElementById('booking-modal-title').textContent = 'New Booking';
@@ -650,8 +678,10 @@ function openBookingModal(prefillDate = null) {
   document.getElementById('b-checkin').value = prefillDate || '';
   document.getElementById('b-checkout').value = '';
   document.getElementById('b-price').value = '';
-  document.getElementById('b-status').value = 'confirmed';
+  document.getElementById('b-downpayment').value = '';
+  document.getElementById('b-status').value = 'pending';
   document.getElementById('b-notes').value = '';
+  toggleDownpaymentField();
   document.getElementById('booking-modal').classList.add('open');
 }
 
@@ -664,8 +694,10 @@ function editBooking(id) {
   document.getElementById('b-checkin').value = toISODate(b.checkin) || '';
   document.getElementById('b-checkout').value = toISODate(b.checkout) || '';
   document.getElementById('b-price').value = b.price || '';
-  document.getElementById('b-status').value = b.status || 'confirmed';
+  document.getElementById('b-downpayment').value = b.downpayment || '';
+  document.getElementById('b-status').value = b.status || 'pending';
   document.getElementById('b-notes').value = b.notes || '';
+  toggleDownpaymentField();
   closeModals();
   setTimeout(() => document.getElementById('booking-modal').classList.add('open'), 10);
 }
@@ -674,15 +706,28 @@ async function saveBooking() {
   const name = document.getElementById('b-name').value.trim();
   const checkin = document.getElementById('b-checkin').value;
   const checkout = document.getElementById('b-checkout').value;
+  const newStatus = document.getElementById('b-status').value;
   if (!name) { alert('Please enter a renter name.'); return; }
   if (!checkin || !checkout) { alert('Please set check-in and check-out dates.'); return; }
   if (checkin >= checkout) { alert('Check-out must be after check-in.'); return; }
+
+  // Determine if downpayment should be kept on cancellation
+  const prevBooking = editingBookingId ? data.bookings.find(b => b.id === editingBookingId) : null;
+  const prevStatus = prevBooking ? prevBooking.status : null;
+  let keepDownpayment = prevBooking ? prevBooking.keepDownpayment || false : false;
+  if (newStatus === 'cancelled') {
+    // Keep downpayment only if it was already paid before cancellation
+    keepDownpayment = prevStatus === 'downpayment' || prevStatus === 'confirmed';
+  }
+
   const booking = {
     id: editingBookingId || genId(), name,
     phone: document.getElementById('b-phone').value.trim(),
     checkin, checkout,
     price: parseFloat(document.getElementById('b-price').value) || 0,
-    status: document.getElementById('b-status').value,
+    downpayment: parseFloat(document.getElementById('b-downpayment').value) || 0,
+    status: newStatus,
+    keepDownpayment,
     notes: document.getElementById('b-notes').value.trim(),
   };
   if (editingBookingId) { const i = data.bookings.findIndex(b => b.id === editingBookingId); if (i >= 0) data.bookings[i] = booking; }
@@ -746,13 +791,17 @@ function showDetail(id) {
   const idx = data.bookings.findIndex(x => x.id === id);
   const col = BOOKING_COLORS[idx % BOOKING_COLORS.length];
   const nights = b.checkin && b.checkout ? nightsBetween(b.checkin, b.checkout) : '—';
-  document.getElementById('d-color').style.background = col;
+  const sl = { confirmed:'Confirmed', downpayment:'Downpayment Paid', pending:'Pending', cancelled:'Cancelled' };
+  const received = cashReceived(b);
+  document.getElementById('d-color').style.background = b.status === 'cancelled' ? '#ccc' : col;
   document.getElementById('d-name').textContent = b.name || 'Unnamed';
   document.getElementById('d-checkin').textContent = fmtDate(b.checkin);
   document.getElementById('d-checkout').textContent = fmtDate(b.checkout);
   document.getElementById('d-phone').textContent = b.phone || '—';
   document.getElementById('d-price').textContent = fmtEGP(b.price);
-  document.getElementById('d-status').textContent = b.status || '—';
+  document.getElementById('d-downpayment').textContent = b.downpayment > 0 ? fmtEGP(b.downpayment) : '—';
+  document.getElementById('d-received').textContent = fmtEGP(received);
+  document.getElementById('d-status').textContent = sl[b.status] || b.status;
   document.getElementById('d-nights').textContent = nights + (nights !== '—' ? ' night' + (nights !== 1 ? 's' : '') : '');
   document.getElementById('d-notes').textContent = b.notes || 'No notes.';
   document.getElementById('d-edit-btn').onclick = () => { closeModals(); editBooking(id); };
