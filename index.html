@@ -398,8 +398,7 @@ async function syncFromSheet() {
 async function syncNow() { await syncFromSheet(); }
 
 async function pushToSheet() {
-  // Push both tabs sequentially and wait for each to confirm
-  const r1 = await sheetRequest({ action: 'writeBookings', data: data.bookings, headers: ['id','name','phone','checkin','checkout','price','downpayment','keepDownpayment','status','notes'] });
+  const r1 = await sheetRequest({ action: 'writeBookings', data: data.bookings });
   if (r1?.error) { showToast('⚠️ Sync error — check connection'); return false; }
   const r2 = await sheetRequest({ action: 'writeExpenses', data: data.expenses });
   if (r2?.error) { showToast('⚠️ Sync error — check connection'); return false; }
