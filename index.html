@@ -239,6 +239,7 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
       <button onclick="showView('bookings',this)">🛏 Bookings</button>
       <button onclick="showView('expenses',this)">💸 Expenses</button>
       <button onclick="showView('profit',this)">📊 Profit</button>
+      <button onclick="showView('settlements',this)">🤝 Settlements</button>
     </nav>
   </header>
 
@@ -249,8 +250,8 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
       <div class="card"><div class="label">Total Bookings Worth</div><div class="value" id="card-total-worth" style="color:var(--ocean)">EGP 0</div><div class="sub" id="card-worth-sub">When all complete</div></div>
       <div class="card"><div class="label">Total Expenses</div><div class="value" id="card-expenses" style="color:var(--coral)">EGP 0</div><div class="sub" id="card-exp-count">0 items</div></div>
       <div class="card"><div class="label">Net Profit</div><div class="value" id="card-profit" style="color:var(--green)">EGP 0</div><div class="sub">Cash basis</div></div>
-      <div class="card"><div class="label">ET Takes Home</div><div class="value" id="card-et" style="color:var(--green)">EGP 0</div><div class="sub">After settlements</div></div>
-      <div class="card"><div class="label">Nathalie Takes Home</div><div class="value" id="card-nat" style="color:var(--green)">EGP 0</div><div class="sub">After settlements</div></div>
+      <div class="card"><div class="label">ET Takes Home</div><div class="value" id="card-et" style="color:var(--green)">EGP 0</div><div class="sub" id="card-et-sub">After settlements</div></div>
+      <div class="card"><div class="label">Nathalie Takes Home</div><div class="value" id="card-nat" style="color:var(--green)">EGP 0</div><div class="sub" id="card-nat-sub">After settlements</div></div>
     </div>
 
     <!-- CALENDAR VIEW -->
@@ -305,6 +306,20 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
       <div class="profit-block">
         <h3>👤 Expenses by Payer</h3>
         <div id="expense-by-payer"></div>
+      </div>
+    </div>
+    <!-- SETTLEMENTS VIEW -->
+    <div class="view" id="view-settlements">
+      <div class="section-header">
+        <h2>Settlements</h2>
+        <button class="btn-primary" onclick="openSettlementModal()">+ Record Settlement</button>
+      </div>
+      <!-- Outstanding balances -->
+      <div class="profit-split" id="settlements-owed" style="margin-bottom:20px"></div>
+      <!-- Log -->
+      <div class="profit-block">
+        <h3>📒 Settlement Log</h3>
+        <div id="settlements-list"></div>
       </div>
     </div>
   </main>
@@ -400,11 +415,32 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
   </div>
 </div>
 
+<!-- SETTLEMENT MODAL -->
+<div class="modal-overlay" id="settlement-modal">
+  <div class="modal">
+    <h2>Record Settlement</h2>
+    <div class="form-group"><label>Date</label><input type="date" id="s-date"/></div>
+    <div class="form-group"><label>Amount (EGP)</label><input type="number" id="s-amount" placeholder="0" min="0"/></div>
+    <div class="form-group">
+      <label>Paid By → To</label>
+      <div class="payer-toggle">
+        <button id="s-et-to-nat" onclick="setSettlementDir('ET→Nathalie')" class="active-et">ET → Nathalie</button>
+        <button id="s-nat-to-et" onclick="setSettlementDir('Nathalie→ET')">Nathalie → ET</button>
+      </div>
+    </div>
+    <div class="form-group"><label>Notes (optional)</label><input type="text" id="s-notes" placeholder="e.g. Instapay transfer"/></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModals()">Cancel</button>
+      <button class="btn-primary" onclick="saveSettlement()">Save Settlement</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast">Saved</div>
 
 <script>
 // ══ CONFIG ════════════════════════════════════════════
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyHHhFnEpTVMx4a4j31HK9I_cFlDW2D5pTjZYokGvQKj1RrALcOTj6mds6NMtGdDPRE/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyuLoaxVRN80auGnRH-EsFbiWIxlB14YCuOVMEqlDry1sbmW2rFQWt9B9cKlCjFejJp/exec';
 const STORAGE_KEY = 'stella_data';
 
 const BOOKING_COLORS = [
@@ -414,7 +450,8 @@ const BOOKING_COLORS = [
 ];
 
 // ══ STATE ═════════════════════════════════════════════
-let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"bookings":[],"expenses":[]}');
+let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"bookings":[],"expenses":[],"settlements":[]}');
+if (!data.settlements) data.settlements = [];
 let calYear, calMonth;
 let editingBookingId = null;
 let currentPayer = 'ET';
@@ -445,6 +482,7 @@ async function syncFromSheet() {
     if (!result || result.error) throw new Error(result?.error || 'No response');
     data.bookings = result.bookings || [];
     data.expenses = result.expenses || [];
+    data.settlements = result.settlements || [];
     saveLocal();
     renderAll();
     showToast('Synced ✓');
@@ -458,10 +496,12 @@ async function syncFromSheet() {
 async function syncNow() { await syncFromSheet(); }
 
 async function pushToSheet() {
-  const r1 = await sheetRequest({ action: 'writeBookings', data: data.bookings });
+  const r1 = await sheetRequest({ action: 'write', sheet: 'Bookings', data: data.bookings, headers: ['id','name','phone','checkin','checkout','price','downpayment','keepDownpayment','status','notes'] });
   if (r1?.error) { showToast('⚠️ Sync error — check connection'); return false; }
-  const r2 = await sheetRequest({ action: 'writeExpenses', data: data.expenses });
+  const r2 = await sheetRequest({ action: 'write', sheet: 'Expenses', data: data.expenses, headers: ['id','category','desc','amount','date','paidBy','bookingId'] });
   if (r2?.error) { showToast('⚠️ Sync error — check connection'); return false; }
+  const r3 = await sheetRequest({ action: 'write', sheet: 'Settlements', data: data.settlements, headers: ['id','date','amount','direction','notes'] });
+  if (r3?.error) { showToast('⚠️ Sync error — check connection'); return false; }
   return true;
 }
 
@@ -551,7 +591,16 @@ function calcProfit() {
     .reduce((s,b) => s + (Number(b.price||0) - Number(b.downpayment||0)), 0)
     + data.bookings.filter(b => b.status === 'pending')
     .reduce((s,b) => s + Number(b.price||0), 0);
-  return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg, pendingRevenue };
+  // Settlements paid out
+  const etSettled = data.settlements.filter(s => s.direction === 'ET→Nathalie').reduce((s,x) => s + Number(x.amount||0), 0)
+    + data.settlements.filter(s => s.direction === 'Nathalie→ET').reduce((s,x) => s - Number(x.amount||0), 0);
+  const natSettled = data.settlements.filter(s => s.direction === 'Nathalie→ET').reduce((s,x) => s + Number(x.amount||0), 0)
+    + data.settlements.filter(s => s.direction === 'ET→Nathalie').reduce((s,x) => s - Number(x.amount||0), 0);
+  // What's still owed after settlements
+  const etOwed = etFinal - etSettled;
+  const natOwed = natFinal - natSettled;
+  const totalSettled = data.settlements.reduce((s,x) => s + Number(x.amount||0), 0);
+  return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg, pendingRevenue, etSettled, natSettled, etOwed, natOwed, totalSettled };
 }
 
 // ══ RENDER ALL ═════════════════════════════════════════
@@ -561,6 +610,83 @@ function renderAll() {
   renderBookingsList();
   renderExpensesList();
   renderProfit(calcProfit());
+  renderSettlements();
+}
+
+// ══ SETTLEMENTS ════════════════════════════════════════
+let currentSettlementDir = 'ET→Nathalie';
+
+function setSettlementDir(dir) {
+  currentSettlementDir = dir;
+  document.getElementById('s-et-to-nat').className = dir === 'ET→Nathalie' ? 'active-et' : '';
+  document.getElementById('s-nat-to-et').className = dir === 'Nathalie→ET' ? 'active-nat' : '';
+}
+
+function openSettlementModal() {
+  document.getElementById('s-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('s-amount').value = '';
+  document.getElementById('s-notes').value = '';
+  setSettlementDir('ET→Nathalie');
+  document.getElementById('settlement-modal').classList.add('open');
+}
+
+async function saveSettlement() {
+  const amount = parseFloat(document.getElementById('s-amount').value);
+  if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+  const settlement = {
+    id: genId(),
+    date: document.getElementById('s-date').value,
+    amount,
+    direction: currentSettlementDir,
+    notes: document.getElementById('s-notes').value.trim(),
+  };
+  data.settlements.push(settlement);
+  closeModals(); renderAll(); await save();
+}
+
+async function deleteSettlement(id) {
+  if (!confirm('Delete this settlement record?')) return;
+  data.settlements = data.settlements.filter(s => s.id !== id);
+  renderAll(); await save();
+}
+
+function renderSettlements() {
+  const c = calcProfit();
+
+  // Owed cards
+  document.getElementById('settlements-owed').innerHTML = `
+    <div class="split-card">
+      <div class="person">ET (Emile)</div>
+      <div class="amount" style="color:${c.etOwed >= 0 ? 'var(--green)' : 'var(--coral)'}">${fmtEGP(Math.abs(c.etOwed))}</div>
+      <div class="note">${c.etOwed >= 0 ? 'still to receive' : 'has overpaid'}</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">${fmtEGP(c.etSettled)} settled so far</div>
+    </div>
+    <div class="split-card">
+      <div class="person">Nathalie</div>
+      <div class="amount" style="color:${c.natOwed >= 0 ? 'var(--green)' : 'var(--coral)'}">${fmtEGP(Math.abs(c.natOwed))}</div>
+      <div class="note">${c.natOwed >= 0 ? 'still to receive' : 'has overpaid'}</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">${fmtEGP(c.natSettled)} settled so far</div>
+    </div>`;
+
+  // Log
+  const el = document.getElementById('settlements-list');
+  if (!data.settlements.length) {
+    el.innerHTML = '<div class="empty" style="padding:24px"><div class="icon">🤝</div><p>No settlements recorded yet.</p></div>';
+    return;
+  }
+  const sorted = [...data.settlements].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  el.innerHTML = sorted.map(s => `
+    <div class="expense-row">
+      <div class="expense-payer ${s.direction === 'ET→Nathalie' ? 'et' : 'nat'}" style="white-space:nowrap">${s.direction}</div>
+      <div class="expense-info">
+        <div class="desc">${s.notes || 'Settlement payment'}</div>
+        <div class="meta">${fmtDate(s.date)}</div>
+      </div>
+      <div class="booking-price">${fmtEGP(s.amount)}</div>
+      <div class="booking-actions">
+        <button class="btn-icon" onclick="deleteSettlement('${s.id}')">🗑️</button>
+      </div>
+    </div>`).join('');
 }
 
 // ══ CALENDAR ══════════════════════════════════════════
@@ -734,8 +860,10 @@ function updateSummaryCards() {
   document.getElementById('card-worth-sub').textContent = `${fmtEGP(totalWorth - c.revenue)} still outstanding`;
   document.getElementById('card-expenses').textContent = fmtEGP(c.totalExp);
   document.getElementById('card-profit').textContent = fmtEGP(c.netProfit);
-  document.getElementById('card-et').textContent = fmtEGP(c.etFinal);
-  document.getElementById('card-nat').textContent = fmtEGP(c.natFinal);
+  document.getElementById('card-et').textContent = fmtEGP(c.etOwed);
+  document.getElementById('card-et-sub').textContent = `${fmtEGP(c.etSettled)} already settled`;
+  document.getElementById('card-nat').textContent = fmtEGP(c.natOwed);
+  document.getElementById('card-nat-sub').textContent = `${fmtEGP(c.natSettled)} already settled`;
 }
 
 function showSaving(id) {
@@ -808,8 +936,12 @@ function renderProfit(c) {
     <div class="breakdown-row"><span>Nathalie paid</span><span>${fmtEGP(c.natPaid)}</span></div>
     <div class="breakdown-row"><span>Each person's fair share</span><span class="neg">− ${fmtEGP(c.eachExpenseShare)}</span></div>
     <div class="breakdown-section-title">Final Cash Position</div>
-    <div class="breakdown-row"><span>ET takes home</span><span class="pos">${fmtEGP(c.etFinal)}</span></div>
-    <div class="breakdown-row"><span>Nathalie takes home</span><span class="pos">${fmtEGP(c.natFinal)}</span></div>`;
+    <div class="breakdown-row"><span>ET takes home (total earned)</span><span class="pos">${fmtEGP(c.etFinal)}</span></div>
+    <div class="breakdown-row"><span>ET already settled</span><span class="neg">− ${fmtEGP(c.etSettled)}</span></div>
+    <div class="breakdown-row"><span>ET still owed</span><span class="pos">${fmtEGP(c.etOwed)}</span></div>
+    <div class="breakdown-row"><span>Nathalie takes home (total earned)</span><span class="pos">${fmtEGP(c.natFinal)}</span></div>
+    <div class="breakdown-row"><span>Nathalie already settled</span><span class="neg">− ${fmtEGP(c.natSettled)}</span></div>
+    <div class="breakdown-row"><span>Nathalie still owed</span><span class="pos">${fmtEGP(c.natOwed)}</span></div>`;
 
   const cats = {};
   data.expenses.forEach(e => { cats[e.category] = (cats[e.category]||0) + Number(e.amount||0); });
