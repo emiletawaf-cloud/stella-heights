@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Stella Heights — Rental Tracker</title>
+<title>Stella Heights — Rentals Tracker</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
 :root {
@@ -583,32 +583,33 @@ function calcProfit() {
   const revenue = data.bookings.reduce((s,b) => s + cashReceived(b), 0);
   const totalExp = data.expenses.reduce((s,e) => s + Number(e.amount||0), 0);
   const netProfit = revenue - totalExp;
-  const baseShare = netProfit / 2;
   const etPaid = data.expenses.filter(e => e.paidBy === 'ET').reduce((s,e) => s + Number(e.amount||0), 0);
   const natPaid = data.expenses.filter(e => e.paidBy === 'Nathalie').reduce((s,e) => s + Number(e.amount||0), 0);
   const unknownPaid = data.expenses.filter(e => !e.paidBy || e.paidBy === '').reduce((s,e) => s + Number(e.amount||0), 0);
   const eachExpenseShare = totalExp / 2;
-  const etFinal = baseShare + (etPaid - eachExpenseShare);
-  const natFinal = baseShare + (natPaid - eachExpenseShare);
+  // Correct split:
+  // Each person gets half the revenue, then bears half the expenses
+  // Separately: whoever paid an expense out of pocket gets reimbursed the other's half
+  const revenueShare = revenue / 2;          // each person's gross share
+  const etFinal = revenueShare - eachExpenseShare + expenseAdjET;
+  const natFinal = revenueShare - eachExpenseShare + expenseAdjNat;
   const diff = Math.abs(etPaid - natPaid) / 2;
   let settlementMsg = null;
   if (etPaid > natPaid && diff > 0) settlementMsg = { payer: 'Nathalie', payee: 'ET', amount: diff };
   else if (natPaid > etPaid && diff > 0) settlementMsg = { payer: 'ET', payee: 'Nathalie', amount: diff };
-  // Pending revenue (expected but not yet received)
   const pendingRevenue = data.bookings.filter(b => b.status === 'downpayment')
     .reduce((s,b) => s + (Number(b.price||0) - Number(b.downpayment||0)), 0)
     + data.bookings.filter(b => b.status === 'pending')
     .reduce((s,b) => s + Number(b.price||0), 0);
-  // Settlements paid out
   const etSettled = data.settlements.filter(s => s.direction === 'ET→Nathalie').reduce((s,x) => s + Number(x.amount||0), 0)
     + data.settlements.filter(s => s.direction === 'Nathalie→ET').reduce((s,x) => s - Number(x.amount||0), 0);
   const natSettled = data.settlements.filter(s => s.direction === 'Nathalie→ET').reduce((s,x) => s + Number(x.amount||0), 0)
     + data.settlements.filter(s => s.direction === 'ET→Nathalie').reduce((s,x) => s - Number(x.amount||0), 0);
-  // What's still owed after settlements
   const etOwed = etFinal - etSettled;
   const natOwed = natFinal - natSettled;
   const totalSettled = data.settlements.reduce((s,x) => s + Number(x.amount||0), 0);
   return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg, pendingRevenue, etSettled, natSettled, etOwed, natOwed, totalSettled };
+}
 }
 
 // ══ RENDER ALL ═════════════════════════════════════════
