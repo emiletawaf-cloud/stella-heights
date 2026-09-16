@@ -660,21 +660,20 @@ async function deleteSettlement(id) {
 
 function calcSettlement() {
   const c = calcProfit();
-  const openingDebt = Number(data.openingDebt || 0); // Nathalie's initial debt to ET
-  // What Nathalie has earned in total (her 50% net profit share)
+  const openingDebt = 69287;
+  // What Nathalie has earned (her 50% net profit share, already adjusted for expenses)
   const natEarned = c.natFinal;
-  // What ET has already paid her in cash transfers
-  const natPaid = data.settlements
+  // Cash ET has transferred to Nathalie as settlement payments
+  const transferredToNat = data.settlements
     .filter(s => s.direction === 'ET→Nathalie')
     .reduce((s,x) => s + Number(x.amount||0), 0);
-  // What Nathalie paid back to ET directly
-  const natPaidBack = data.settlements
+  // Cash Nathalie has transferred back to ET
+  const transferredToET = data.settlements
     .filter(s => s.direction === 'Nathalie→ET')
     .reduce((s,x) => s + Number(x.amount||0), 0);
-  // Net: earned − opening debt − cash paid to her + cash she paid back
-  const netPosition = natEarned - openingDebt - natPaid + natPaidBack;
-  // positive = ET owes Nathalie, negative = Nathalie still owes ET
-  return { natEarned, natPaid, natPaidBack, openingDebt, netPosition };
+  // Net: her earned share minus opening debt minus what's been paid to her
+  const netPosition = natEarned - openingDebt - transferredToNat + transferredToET;
+  return { natEarned, transferredToNat, transferredToET, openingDebt, netPosition };
 }
 
 function renderSettlements() {
@@ -702,7 +701,7 @@ function renderSettlements() {
         </div>
         <div style="text-align:center;font-size:12px;color:var(--muted)">
           Cash paid to her<br>
-          <strong style="color:var(--ocean);font-size:14px">− ${fmtEGP(s.natPaid)}</strong>
+          <strong style="color:var(--ocean);font-size:14px">− ${fmtEGP(s.transferredToNat)}</strong>
         </div>
       </div>
     </div>`;
@@ -912,8 +911,7 @@ function updateSummaryCards() {
   document.getElementById('card-et').textContent = fmtEGP(c.etFinal);
   document.getElementById('card-et-sub').textContent = 'Your total share';
   document.getElementById('card-nat').textContent = fmtEGP(Math.abs(s.netPosition));
-  document.getElementById('card-nat-sub').textContent = s.netPosition > 0 ? '👆 You owe Nathalie' : s.netPosition < 0 ? '👇 Nathalie owes you' : '✅ Settled';
-}
+  document.getElementById('card-nat-sub').textContent = s.netPosition > 0 ? '👆 You owe Nathalie' : s.netPosition < 0 ? '👇 Nathalie owes you' : '✅ Settled';}
 
 function showSaving(id) {
   const el = document.getElementById('saving-' + id);
