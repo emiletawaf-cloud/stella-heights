@@ -424,8 +424,8 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
     <div class="form-group">
       <label>Paid By → To</label>
       <div class="payer-toggle">
-        <button id="s-et-to-nat" onclick="setSettlementDir('ET→Nathalie')" class="active-et">ET → Nathalie</button>
-        <button id="s-nat-to-et" onclick="setSettlementDir('Nathalie→ET')">Nathalie → ET</button>
+        <button id="s-et-to-nat" onclick="setSettlementDir('ET-to-Nathalie')" class="active-et">ET → Nathalie</button>
+        <button id="s-nat-to-et" onclick="setSettlementDir('Nathalie-to-ET')">Nathalie → ET</button>
       </div>
     </div>
     <div class="form-group"><label>Notes (optional)</label><input type="text" id="s-notes" placeholder="e.g. Instapay transfer"/></div>
@@ -587,12 +587,13 @@ function calcProfit() {
   const natPaid = data.expenses.filter(e => e.paidBy === 'Nathalie').reduce((s,e) => s + Number(e.amount||0), 0);
   const unknownPaid = data.expenses.filter(e => !e.paidBy || e.paidBy === '').reduce((s,e) => s + Number(e.amount||0), 0);
   const eachExpenseShare = totalExp / 2;
-  // Correct split:
-  // Each person gets half the revenue, then bears half the expenses
-  // Separately: whoever paid an expense out of pocket gets reimbursed the other's half
-  const revenueShare = revenue / 2;          // each person's gross share
-  const etFinal = revenueShare - eachExpenseShare + expenseAdjET;
-  const natFinal = revenueShare - eachExpenseShare + expenseAdjNat;
+  const baseShare = revenue / 2;
+  // Each person gets half the revenue, minus their half of expenses,
+  // plus reimbursement for any expenses they overpaid in cash
+  // etFinal = revenue/2 - totalExp/2 + (etPaid - totalExp/2) = revenue/2 - totalExp + etPaid
+  // natFinal = revenue/2 - totalExp/2 + (natPaid - totalExp/2) = revenue/2 - totalExp + natPaid
+  const etFinal = baseShare - totalExp + etPaid;
+  const natFinal = baseShare - totalExp + natPaid;
   const diff = Math.abs(etPaid - natPaid) / 2;
   let settlementMsg = null;
   if (etPaid > natPaid && diff > 0) settlementMsg = { payer: 'Nathalie', payee: 'ET', amount: diff };
@@ -601,16 +602,16 @@ function calcProfit() {
     .reduce((s,b) => s + (Number(b.price||0) - Number(b.downpayment||0)), 0)
     + data.bookings.filter(b => b.status === 'pending')
     .reduce((s,b) => s + Number(b.price||0), 0);
-  const etSettled = data.settlements.filter(s => s.direction === 'ET→Nathalie').reduce((s,x) => s + Number(x.amount||0), 0)
-    + data.settlements.filter(s => s.direction === 'Nathalie→ET').reduce((s,x) => s - Number(x.amount||0), 0);
-  const natSettled = data.settlements.filter(s => s.direction === 'Nathalie→ET').reduce((s,x) => s + Number(x.amount||0), 0)
-    + data.settlements.filter(s => s.direction === 'ET→Nathalie').reduce((s,x) => s - Number(x.amount||0), 0);
+  const etSettled = data.settlements.filter(s => s.direction === 'ET-to-Nathalie').reduce((s,x) => s + Number(x.amount||0), 0)
+    + data.settlements.filter(s => s.direction === 'Nathalie-to-ET').reduce((s,x) => s - Number(x.amount||0), 0);
+  const natSettled = data.settlements.filter(s => s.direction === 'Nathalie-to-ET').reduce((s,x) => s + Number(x.amount||0), 0)
+    + data.settlements.filter(s => s.direction === 'ET-to-Nathalie').reduce((s,x) => s - Number(x.amount||0), 0);
   const etOwed = etFinal - etSettled;
   const natOwed = natFinal - natSettled;
   const totalSettled = data.settlements.reduce((s,x) => s + Number(x.amount||0), 0);
   return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg, pendingRevenue, etSettled, natSettled, etOwed, natOwed, totalSettled };
 }
-}
+
 
 // ══ RENDER ALL ═════════════════════════════════════════
 function renderAll() {
@@ -623,19 +624,19 @@ function renderAll() {
 }
 
 // ══ SETTLEMENTS ════════════════════════════════════════
-let currentSettlementDir = 'ET→Nathalie';
+let currentSettlementDir = 'ET-to-Nathalie';
 
 function setSettlementDir(dir) {
   currentSettlementDir = dir;
-  document.getElementById('s-et-to-nat').className = dir === 'ET→Nathalie' ? 'active-et' : '';
-  document.getElementById('s-nat-to-et').className = dir === 'Nathalie→ET' ? 'active-nat' : '';
+  document.getElementById('s-et-to-nat').className = dir === 'ET-to-Nathalie' ? 'active-et' : '';
+  document.getElementById('s-nat-to-et').className = dir === 'Nathalie-to-ET' ? 'active-nat' : '';
 }
 
 function openSettlementModal() {
   document.getElementById('s-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('s-amount').value = '';
   document.getElementById('s-notes').value = '';
-  setSettlementDir('ET→Nathalie');
+  setSettlementDir('ET-to-Nathalie');
   document.getElementById('settlement-modal').classList.add('open');
 }
 
@@ -666,11 +667,11 @@ function calcSettlement() {
   const natEarned = c.natFinal;
   // Cash ET has transferred to Nathalie as settlement payments
   const transferredToNat = data.settlements
-    .filter(s => s.direction === 'ET→Nathalie')
+    .filter(s => s.direction === 'ET-to-Nathalie')
     .reduce((s,x) => s + Number(x.amount||0), 0);
   // Cash Nathalie has transferred back to ET
   const transferredToET = data.settlements
-    .filter(s => s.direction === 'Nathalie→ET')
+    .filter(s => s.direction === 'Nathalie-to-ET')
     .reduce((s,x) => s + Number(x.amount||0), 0);
   // Net: her earned share minus opening debt minus what's been paid to her
   const netPosition = natEarned - openingDebt - transferredToNat + transferredToET;
@@ -693,7 +694,7 @@ function renderSettlements() {
       </div>
       <div style="display:flex;justify-content:center;gap:20px;margin-top:16px;flex-wrap:wrap">
         <div style="text-align:center;font-size:12px;color:var(--muted)">
-          Opening debt (Nathalie→ET)<br>
+          Opening debt (Nathalie-to-ET)<br>
           <strong style="color:var(--coral);font-size:14px">− ${fmtEGP(s.openingDebt)}</strong>
         </div>
         <div style="text-align:center;font-size:12px;color:var(--muted)">
@@ -716,7 +717,7 @@ function renderSettlements() {
   const sorted = [...data.settlements].sort((a,b) => (b.date||'').localeCompare(a.date||''));
   el.innerHTML = sorted.map(s => {
     const amt = Number(s.amount||0);
-    const isOut = s.direction === 'ET→Nathalie';
+    const isOut = s.direction === 'ET-to-Nathalie';
     return `<div class="expense-row">
       <div class="expense-payer ${isOut ? 'et' : 'nat'}" style="white-space:nowrap;min-width:130px">
         ${isOut ? '→ Paid to Nathalie' : '← Received from Nathalie'}
