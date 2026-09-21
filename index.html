@@ -251,7 +251,7 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
       <div class="card"><div class="label">Total Expenses</div><div class="value" id="card-expenses" style="color:var(--coral)">EGP 0</div><div class="sub" id="card-exp-count">0 items</div></div>
       <div class="card"><div class="label">Net Profit</div><div class="value" id="card-profit" style="color:var(--green)">EGP 0</div><div class="sub">Cash basis</div></div>
       <div class="card"><div class="label">ET Takes Home</div><div class="value" id="card-et" style="color:var(--green)">EGP 0</div><div class="sub" id="card-et-sub">After settlements</div></div>
-      <div class="card"><div class="label">You Owe Nathalie</div><div class="value" id="card-nat" style="color:var(--coral)">EGP 0</div><div class="sub" id="card-nat-sub">After payments made</div></div>
+      <div class="card"><div class="label">Nathalie Takes Home</div><div class="value" id="card-nat" style="color:var(--green)">EGP 0</div><div class="sub" id="card-nat-sub">Nathalie net share</div></div>
     </div>
 
     <!-- CALENDAR VIEW -->
@@ -293,9 +293,12 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
 
     <!-- PROFIT VIEW -->
     <div class="view" id="view-profit">
-      <div id="settlement-area"></div>
       <div class="profit-block">
-        <h3>💰 Final Settlement</h3>
+        <h3>💰 Who Owes Who</h3>
+        <div id="net-position-card" style="text-align:center;padding:10px 0"></div>
+      </div>
+      <div class="profit-block">
+        <h3>📊 Profit Breakdown</h3>
         <div class="profit-split" id="profit-split-cards"></div>
         <div id="profit-breakdown" style="margin-top:20px"></div>
       </div>
@@ -312,13 +315,14 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
     <div class="view" id="view-settlements">
       <div class="section-header">
         <h2>Settlements</h2>
-        <button class="btn-primary" onclick="openSettlementModal()">+ Record Settlement</button>
+        <button class="btn-primary" onclick="openSettlementModal()">+ Record Payment</button>
       </div>
-      <!-- Outstanding balances -->
-      <div class="profit-split" id="settlements-owed" style="margin-bottom:20px"></div>
-      <!-- Log -->
       <div class="profit-block">
-        <h3>📒 Settlement Log</h3>
+        <h3>💳 Current Balance</h3>
+        <div id="settlement-balance" style="text-align:center;padding:10px 0"></div>
+      </div>
+      <div class="profit-block">
+        <h3>📒 Payment Log</h3>
         <div id="settlements-list"></div>
       </div>
     </div>
@@ -418,20 +422,13 @@ main{padding:28px;max-width:1200px;margin:0 auto;}
 <!-- SETTLEMENT MODAL -->
 <div class="modal-overlay" id="settlement-modal">
   <div class="modal">
-    <h2>Record Settlement</h2>
-    <div class="form-group"><label>Date</label><input type="date" id="s-date"/></div>
+    <h2>Record Payment to Nathalie</h2>
     <div class="form-group"><label>Amount (EGP)</label><input type="number" id="s-amount" placeholder="0" min="0"/></div>
-    <div class="form-group">
-      <label>Paid By → To</label>
-      <div class="payer-toggle">
-        <button id="s-et-to-nat" onclick="setSettlementDir('ET-to-Nathalie')" class="active-et">ET → Nathalie</button>
-        <button id="s-nat-to-et" onclick="setSettlementDir('Nathalie-to-ET')">Nathalie → ET</button>
-      </div>
-    </div>
-    <div class="form-group"><label>Notes (optional)</label><input type="text" id="s-notes" placeholder="e.g. Instapay transfer"/></div>
+    <div class="form-group"><label>Date</label><input type="date" id="s-date"/></div>
+    <div class="form-group"><label>Notes (optional)</label><input type="text" id="s-notes" placeholder="e.g. Instapay July transfer"/></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModals()">Cancel</button>
-      <button class="btn-primary" onclick="saveSettlement()">Save Settlement</button>
+      <button class="btn-primary" onclick="saveSettlement()">Save Payment</button>
     </div>
   </div>
 </div>
@@ -587,31 +584,18 @@ function calcProfit() {
   const natPaid = data.expenses.filter(e => e.paidBy === 'Nathalie').reduce((s,e) => s + Number(e.amount||0), 0);
   const unknownPaid = data.expenses.filter(e => !e.paidBy || e.paidBy === '').reduce((s,e) => s + Number(e.amount||0), 0);
   const eachExpenseShare = totalExp / 2;
-  const baseShare = revenue / 2;
-  // Each person gets half the revenue, minus their half of expenses,
-  // plus reimbursement for any expenses they overpaid in cash
-  // etFinal = revenue/2 - totalExp/2 + (etPaid - totalExp/2) = revenue/2 - totalExp + etPaid
-  // natFinal = revenue/2 - totalExp/2 + (natPaid - totalExp/2) = revenue/2 - totalExp + natPaid
-  const etFinal = baseShare - totalExp + etPaid;
-  const natFinal = baseShare - totalExp + natPaid;
+  // Each person: half revenue, minus half expenses, adjusted for who physically paid
+  const etFinal = revenue/2 - totalExp + etPaid;
+  const natFinal = revenue/2 - totalExp + natPaid;
+  // Who owes who: positive = ET owes Nathalie, negative = Nathalie owes ET
+  const netPosition = natFinal - etFinal; // if nat earned more than ET after adjustments
   const diff = Math.abs(etPaid - natPaid) / 2;
-  let settlementMsg = null;
-  if (etPaid > natPaid && diff > 0) settlementMsg = { payer: 'Nathalie', payee: 'ET', amount: diff };
-  else if (natPaid > etPaid && diff > 0) settlementMsg = { payer: 'ET', payee: 'Nathalie', amount: diff };
   const pendingRevenue = data.bookings.filter(b => b.status === 'downpayment')
     .reduce((s,b) => s + (Number(b.price||0) - Number(b.downpayment||0)), 0)
     + data.bookings.filter(b => b.status === 'pending')
     .reduce((s,b) => s + Number(b.price||0), 0);
-  const etSettled = data.settlements.filter(s => s.direction === 'ET-to-Nathalie').reduce((s,x) => s + Number(x.amount||0), 0)
-    + data.settlements.filter(s => s.direction === 'Nathalie-to-ET').reduce((s,x) => s - Number(x.amount||0), 0);
-  const natSettled = data.settlements.filter(s => s.direction === 'Nathalie-to-ET').reduce((s,x) => s + Number(x.amount||0), 0)
-    + data.settlements.filter(s => s.direction === 'ET-to-Nathalie').reduce((s,x) => s - Number(x.amount||0), 0);
-  const etOwed = etFinal - etSettled;
-  const natOwed = natFinal - natSettled;
-  const totalSettled = data.settlements.reduce((s,x) => s + Number(x.amount||0), 0);
-  return { revenue, totalExp, netProfit, baseShare, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, settlementMsg, pendingRevenue, etSettled, natSettled, etOwed, natOwed, totalSettled };
+  return { revenue, totalExp, netProfit, etPaid, natPaid, unknownPaid, eachExpenseShare, etFinal, natFinal, diff, pendingRevenue };
 }
-
 
 // ══ RENDER ALL ═════════════════════════════════════════
 function renderAll() {
@@ -624,119 +608,68 @@ function renderAll() {
 }
 
 // ══ SETTLEMENTS ════════════════════════════════════════
-let currentSettlementDir = 'ET-to-Nathalie';
-
-function setSettlementDir(dir) {
-  currentSettlementDir = dir;
-  document.getElementById('s-et-to-nat').className = dir === 'ET-to-Nathalie' ? 'active-et' : '';
-  document.getElementById('s-nat-to-et').className = dir === 'Nathalie-to-ET' ? 'active-nat' : '';
-}
-
 function openSettlementModal() {
-  document.getElementById('s-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('s-amount').value = '';
+  document.getElementById('s-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('s-notes').value = '';
-  setSettlementDir('ET-to-Nathalie');
   document.getElementById('settlement-modal').classList.add('open');
 }
 
 async function saveSettlement() {
   const amount = parseFloat(document.getElementById('s-amount').value);
   if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
-  const settlement = {
+  data.settlements.push({
     id: genId(),
     date: document.getElementById('s-date').value,
     amount,
-    direction: currentSettlementDir,
     notes: document.getElementById('s-notes').value.trim(),
-  };
-  data.settlements.push(settlement);
+  });
   closeModals(); renderAll(); await save();
 }
 
 async function deleteSettlement(id) {
-  if (!confirm('Delete this settlement record?')) return;
+  if (!confirm('Delete this payment record?')) return;
   data.settlements = data.settlements.filter(s => s.id !== id);
   renderAll(); await save();
 }
 
-function calcSettlement() {
-  const c = calcProfit();
-  const openingDebt = 69287;
-  // What Nathalie has earned (her 50% net profit share, already adjusted for expenses)
-  const natEarned = c.natFinal;
-  // Cash ET has transferred to Nathalie as settlement payments
-  const transferredToNat = data.settlements
-    .filter(s => s.direction === 'ET-to-Nathalie')
-    .reduce((s,x) => s + Number(x.amount||0), 0);
-  // Cash Nathalie has transferred back to ET
-  const transferredToET = data.settlements
-    .filter(s => s.direction === 'Nathalie-to-ET')
-    .reduce((s,x) => s + Number(x.amount||0), 0);
-  // Net: her earned share minus opening debt minus what's been paid to her
-  const netPosition = natEarned - openingDebt - transferredToNat + transferredToET;
-  return { natEarned, transferredToNat, transferredToET, openingDebt, netPosition };
-}
-
 function renderSettlements() {
-  const s = calcSettlement();
-  const owesET = s.netPosition < 0;
-  const settled = s.netPosition === 0;
+  const c = calcProfit();
+  const totalPaid = data.settlements.reduce((s,x) => s + Number(x.amount||0), 0);
+  const stillOwed = c.natFinal - totalPaid;
 
-  document.getElementById('settlements-owed').innerHTML = `
-    <div class="split-card" style="grid-column:1/-1">
-      <div class="person">Net Position with Nathalie</div>
-      <div class="amount" style="font-size:36px;color:${owesET?'var(--ocean)':settled?'var(--green)':'var(--coral)'}">
-        ${fmtEGP(Math.abs(s.netPosition))}
-      </div>
-      <div class="note" style="font-size:13px;margin-top:6px">
-        ${owesET ? '👇 Nathalie still owes you this amount' : settled ? '✅ All settled up!' : '👆 You owe Nathalie this amount'}
-      </div>
-      <div style="display:flex;justify-content:center;gap:20px;margin-top:16px;flex-wrap:wrap">
-        <div style="text-align:center;font-size:12px;color:var(--muted)">
-          Opening debt (Nathalie-to-ET)<br>
-          <strong style="color:var(--coral);font-size:14px">− ${fmtEGP(s.openingDebt)}</strong>
-        </div>
-        <div style="text-align:center;font-size:12px;color:var(--muted)">
-          Her profit share earned<br>
-          <strong style="color:var(--green);font-size:14px">+ ${fmtEGP(s.natEarned)}</strong>
-        </div>
-        <div style="text-align:center;font-size:12px;color:var(--muted)">
-          Cash paid to her<br>
-          <strong style="color:var(--ocean);font-size:14px">− ${fmtEGP(s.transferredToNat)}</strong>
-        </div>
-      </div>
+  document.getElementById('settlement-balance').innerHTML = `
+    <div style="font-size:34px;font-weight:700;color:${stillOwed > 0 ? 'var(--coral)' : stillOwed < 0 ? 'var(--green)' : 'var(--green)'}">
+      ${fmtEGP(Math.abs(stillOwed))}
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-top:6px;margin-bottom:16px">
+      ${stillOwed > 0 ? '👆 You still owe Nathalie this amount' : stillOwed < 0 ? '✅ You have overpaid by this amount' : '✅ All settled up!'}
+    </div>
+    <div style="display:flex;justify-content:center;gap:32px;font-size:12px;color:var(--muted)">
+      <div style="text-align:center">Nathalie earned<br><strong style="color:var(--green);font-size:14px">${fmtEGP(c.natFinal)}</strong></div>
+      <div style="text-align:center">Already paid<br><strong style="color:var(--ocean);font-size:14px">${fmtEGP(totalPaid)}</strong></div>
+      <div style="text-align:center">Still owed<br><strong style="color:var(--coral);font-size:14px">${fmtEGP(Math.max(0, stillOwed))}</strong></div>
     </div>`;
 
-  // Log
   const el = document.getElementById('settlements-list');
   if (!data.settlements.length) {
-    el.innerHTML = '<div class="empty" style="padding:24px"><div class="icon">🤝</div><p>No payments recorded yet. When you pay Nathalie, record it here.</p></div>';
+    el.innerHTML = '<div class="empty" style="padding:24px"><div class="icon">🤝</div><p>No payments recorded yet.</p></div>';
     return;
   }
   const sorted = [...data.settlements].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-  el.innerHTML = sorted.map(s => {
-    const amt = Number(s.amount||0);
-    const isOut = s.direction === 'ET-to-Nathalie';
-    return `<div class="expense-row">
-      <div class="expense-payer ${isOut ? 'et' : 'nat'}" style="white-space:nowrap;min-width:130px">
-        ${isOut ? '→ Paid to Nathalie' : '← Received from Nathalie'}
-      </div>
+  el.innerHTML = sorted.map(s => `
+    <div class="expense-row">
+      <div class="expense-payer et" style="white-space:nowrap">Paid to Nathalie</div>
       <div class="expense-info">
         <div class="desc">${s.notes || 'Payment'}</div>
         <div class="meta">${fmtDate(s.date)}</div>
       </div>
-      <div class="booking-price" style="color:${isOut?'var(--coral)':'var(--green)'}">
-        ${isOut ? '−' : '+'} ${fmtEGP(amt)}
-      </div>
+      <div class="booking-price">− ${fmtEGP(s.amount)}</div>
       <div class="booking-actions">
         <button class="btn-icon" onclick="deleteSettlement('${s.id}')">🗑️</button>
       </div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 }
-
-
 
 // ══ CALENDAR ══════════════════════════════════════════
 function renderCalendar() {
@@ -908,12 +841,13 @@ function updateSummaryCards() {
   document.getElementById('card-total-worth').textContent = fmtEGP(totalWorth);
   document.getElementById('card-worth-sub').textContent = `${fmtEGP(totalWorth - c.revenue)} still outstanding`;
   document.getElementById('card-expenses').textContent = fmtEGP(c.totalExp);
+  document.getElementById('card-exp-count').textContent = data.expenses.length + ' item' + (data.expenses.length !== 1 ? 's' : '');
   document.getElementById('card-profit').textContent = fmtEGP(c.netProfit);
-  const s = calcSettlement();
   document.getElementById('card-et').textContent = fmtEGP(c.etFinal);
-  document.getElementById('card-et-sub').textContent = 'Your total share';
-  document.getElementById('card-nat').textContent = fmtEGP(Math.abs(s.netPosition));
-  document.getElementById('card-nat-sub').textContent = s.netPosition > 0 ? '👆 You owe Nathalie' : s.netPosition < 0 ? '👇 Nathalie owes you' : '✅ Settled';}
+  document.getElementById('card-et-sub').textContent = 'ET net share';
+  document.getElementById('card-nat').textContent = fmtEGP(c.natFinal);
+  document.getElementById('card-nat-sub').textContent = 'Nathalie net share';
+}
 
 function showSaving(id) {
   const el = document.getElementById('saving-' + id);
@@ -947,17 +881,20 @@ function renderExpensesList() {
 
 // ══ PROFIT VIEW ═══════════════════════════════════════
 function renderProfit(c) {
-  const sa = document.getElementById('settlement-area');
-  if (c.settlementMsg) {
-    const s = c.settlementMsg;
-    sa.innerHTML = `<div class="settlement-banner">
-      <div class="icon">⚖️</div>
-      <div class="text"><strong>Settlement Required</strong>
-        <p><strong>${s.payer}</strong> paid less in expenses than their fair share — they owe <strong>${s.payee}</strong>:</p>
-      </div>
-      <div class="amount">${fmtEGP(s.amount)}</div>
+  // Who owes who: ET paid more expenses → Nathalie owes ET her unpaid half
+  // ET net = revenue/2 - totalExp + etPaid
+  // Nat net = revenue/2 - totalExp + natPaid
+  // If etFinal > natFinal, ET overpaid expenses so Nathalie owes ET
+  const diff = c.etFinal - c.natFinal; // positive = Nathalie owes ET, negative = ET owes Nathalie
+
+  // Net position card
+  document.getElementById('net-position-card').innerHTML = `
+    <div style="font-size:34px;font-weight:700;color:${diff > 0 ? 'var(--ocean)' : diff < 0 ? 'var(--coral)' : 'var(--green)'}">
+      ${fmtEGP(Math.abs(diff / 2))}
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-top:6px">
+      ${diff > 0 ? '👇 Nathalie owes ET this amount (ET overpaid expenses)' : diff < 0 ? '👆 ET owes Nathalie this amount (Nathalie overpaid expenses)' : '✅ All square — expenses split evenly'}
     </div>`;
-  } else { sa.innerHTML = ''; }
 
   document.getElementById('profit-split-cards').innerHTML = `
     <div class="split-card">
@@ -972,25 +909,18 @@ function renderProfit(c) {
     </div>`;
 
   document.getElementById('profit-breakdown').innerHTML = `
-    <div class="breakdown-section-title">Cash Received</div>
-    <div class="breakdown-row"><span>Cash received (confirmed + downpayments)</span><span class="pos">${fmtEGP(c.revenue)}</span></div>
-    ${c.pendingRevenue > 0 ? `<div class="breakdown-row"><span>Pending / outstanding balance</span><span style="color:var(--muted)">${fmtEGP(c.pendingRevenue)}</span></div>` : ''}
-    <div class="breakdown-row"><span>Total Expenses</span><span class="neg">− ${fmtEGP(c.totalExp)}</span></div>
-    <div class="breakdown-row"><span>Net Profit (cash basis)</span><span class="pos">${fmtEGP(c.netProfit)}</span></div>
-    <div class="breakdown-section-title">Base 50/50 Split</div>
-    <div class="breakdown-row"><span>ET base share</span><span class="pos">${fmtEGP(c.baseShare)}</span></div>
-    <div class="breakdown-row"><span>Nathalie base share</span><span class="pos">${fmtEGP(c.baseShare)}</span></div>
-    <div class="breakdown-section-title">Expense Settlement</div>
+    <div class="breakdown-section-title">Revenue</div>
+    <div class="breakdown-row"><span>Cash received</span><span class="pos">${fmtEGP(c.revenue)}</span></div>
+    ${c.pendingRevenue > 0 ? `<div class="breakdown-row"><span>Still outstanding</span><span style="color:var(--muted)">${fmtEGP(c.pendingRevenue)}</span></div>` : ''}
+    <div class="breakdown-section-title">Expenses</div>
+    <div class="breakdown-row"><span>Total expenses</span><span class="neg">− ${fmtEGP(c.totalExp)}</span></div>
     <div class="breakdown-row"><span>ET paid</span><span>${fmtEGP(c.etPaid)}</span></div>
     <div class="breakdown-row"><span>Nathalie paid</span><span>${fmtEGP(c.natPaid)}</span></div>
-    <div class="breakdown-row"><span>Each person's fair share</span><span class="neg">− ${fmtEGP(c.eachExpenseShare)}</span></div>
-    <div class="breakdown-section-title">Final Cash Position</div>
-    <div class="breakdown-row"><span>ET takes home (total earned)</span><span class="pos">${fmtEGP(c.etFinal)}</span></div>
-    <div class="breakdown-row"><span>ET already settled</span><span class="neg">− ${fmtEGP(c.etSettled)}</span></div>
-    <div class="breakdown-row"><span>ET still owed</span><span class="pos">${fmtEGP(c.etOwed)}</span></div>
-    <div class="breakdown-row"><span>Nathalie takes home (total earned)</span><span class="pos">${fmtEGP(c.natFinal)}</span></div>
-    <div class="breakdown-row"><span>Nathalie already settled</span><span class="neg">− ${fmtEGP(c.natSettled)}</span></div>
-    <div class="breakdown-row"><span>Nathalie still owed</span><span class="pos">${fmtEGP(c.natOwed)}</span></div>`;
+    <div class="breakdown-row"><span>Each person's fair share</span><span>${fmtEGP(c.eachExpenseShare)}</span></div>
+    <div class="breakdown-section-title">Net Profit Split</div>
+    <div class="breakdown-row"><span>Net profit</span><span class="pos">${fmtEGP(c.netProfit)}</span></div>
+    <div class="breakdown-row"><span>ET takes home</span><span class="pos">${fmtEGP(c.etFinal)}</span></div>
+    <div class="breakdown-row"><span>Nathalie takes home</span><span class="pos">${fmtEGP(c.natFinal)}</span></div>`;
 
   const cats = {};
   data.expenses.forEach(e => { cats[e.category] = (cats[e.category]||0) + Number(e.amount||0); });
