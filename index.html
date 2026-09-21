@@ -633,9 +633,14 @@ async function deleteSettlement(id) {
   renderAll(); await save();
 }
 
+function isToNathalie(s) {
+  const d = s.direction || '';
+  return d === 'ET-to-Nathalie' || d === 'ET→Nathalie' || d === 'ET->Nathalie';
+}
+
 function renderSettlements() {
   const c = calcProfit();
-  const totalPaid = data.settlements.reduce((s,x) => s + Number(x.amount||0), 0);
+  const totalPaid = data.settlements.filter(s => isToNathalie(s)).reduce((s,x) => s + Number(x.amount||0), 0);
   const stillOwed = c.natFinal - totalPaid;
 
   document.getElementById('settlement-balance').innerHTML = `
