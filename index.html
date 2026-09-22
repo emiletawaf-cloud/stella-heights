@@ -622,6 +622,7 @@ async function saveSettlement() {
     id: genId(),
     date: document.getElementById('s-date').value,
     amount,
+    direction: 'ET→Nathalie',
     notes: document.getElementById('s-notes').value.trim(),
   });
   closeModals(); renderAll(); await save();
@@ -635,13 +636,19 @@ async function deleteSettlement(id) {
 
 function isToNathalie(s) {
   const d = s.direction || '';
-  return d === 'ET-to-Nathalie' || d === 'ET→Nathalie' || d === 'ET->Nathalie';
+  return d === 'ET-to-Nathalie' || d === 'ET→Nathalie' || d === 'ET->Nathalie' || d === '';
+}
+
+function isToET(s) {
+  const d = s.direction || '';
+  return d === 'Nathalie-to-ET' || d === 'Nathalie→ET' || d === 'Nathalie->ET';
 }
 
 function renderSettlements() {
   const c = calcProfit();
   const totalPaid = data.settlements.filter(s => isToNathalie(s)).reduce((s,x) => s + Number(x.amount||0), 0);
-  const stillOwed = c.natFinal - totalPaid;
+  const totalReceivedBack = data.settlements.filter(s => isToET(s)).reduce((s,x) => s + Number(x.amount||0), 0);
+  const stillOwed = c.natFinal - totalPaid + totalReceivedBack;
 
   document.getElementById('settlement-balance').innerHTML = `
     <div style="font-size:34px;font-weight:700;color:${stillOwed > 0 ? 'var(--coral)' : stillOwed < 0 ? 'var(--green)' : 'var(--green)'}">
@@ -652,7 +659,7 @@ function renderSettlements() {
     </div>
     <div style="display:flex;justify-content:center;gap:32px;font-size:12px;color:var(--muted)">
       <div style="text-align:center">Nathalie earned<br><strong style="color:var(--green);font-size:14px">${fmtEGP(c.natFinal)}</strong></div>
-      <div style="text-align:center">Already paid<br><strong style="color:var(--ocean);font-size:14px">${fmtEGP(totalPaid)}</strong></div>
+      <div style="text-align:center">Already paid<br><strong style="color:var(--ocean);font-size:14px">${fmtEGP(totalPaid - totalReceivedBack)}</strong></div>
       <div style="text-align:center">Still owed<br><strong style="color:var(--coral);font-size:14px">${fmtEGP(Math.max(0, stillOwed))}</strong></div>
     </div>`;
 
